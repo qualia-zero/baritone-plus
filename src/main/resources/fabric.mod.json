@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "baritone_plus",
+  "version": "${version}",
+  "name": "Baritone+",
+  "description": "An addon for Baritone providing advanced autocrafting logic.",
+  "authors": [
+    "Qualia-Zero"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/baritone_plus/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "baritone.plus.BaritonePlusClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=26.2",
+    "java": ">=25",
+    "fabric-api": "*",
+    "baritone": ">=1.19.0"
+  }
+}

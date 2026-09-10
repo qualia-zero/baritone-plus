@@ -1,0 +1,32 @@
+# Gradle build directories and caches
+.gradle/
+build/
+out/
+bin/
+
+# Compiled class files & jars
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+!libs/*.jar
+
+# Log files
+*.log
+logs/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+# Runtime data (Minecraft runs)
+run/
+
+# OS generated files
+.DS_Store
+Thumbs.db
