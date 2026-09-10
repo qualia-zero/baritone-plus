@@ -32,7 +32,7 @@ Baritone+ registers native Fabric client commands (`/`) with tab auto-completion
 - **Fabric Loader:** `>=0.16.0`
 - **Fabric API**
 - **Java:** `25+`
-- **Baritone:** Required at runtime.
+- **Baritone:** Required at runtime (Fabric `>=1.18.0`).
 
 ---
 
