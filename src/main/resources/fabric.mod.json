@@ -8,7 +8,7 @@
     "qualia-zero"
   ],
   "contact": {},
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "icon": "assets/baritone_plus/icon.png",
   "environment": "*",
   "entrypoints": {
