@@ -1,32 +1,45 @@
-# Gradle build directories and caches
+# Gradle build directories & caches
 .gradle/
 build/
 out/
 bin/
 
-# Compiled class files & jars
+# Compiled class files & jars (keep wrapper and bundled API libs)
 *.class
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
 !libs/*.jar
 
-# Log files
-*.log
-logs/
+# Runtime data (Minecraft runs)
+run/
 
-# IDE files
+# Environment variables & secrets
+.env
+.env.*
+*.env
+!.env.example
+*.keystore
+*.jks
+
+# Log files
+logs/
+*.log
+
+# Editor & IDE files
 .idea/
 *.iml
 *.ipr
 *.iws
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+*.sw?
 .classpath
 .project
 .settings/
 
-# Runtime data (Minecraft runs)
-run/
-
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Local AI / agent rules
+GEMINI.md
