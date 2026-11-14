@@ -47,6 +47,7 @@ lerna-debug.log*
 .vscode/*
 !.vscode/extensions.json
 *.sw?
+*~
 .DS_Store
 Thumbs.db
 
