@@ -8,6 +8,8 @@
 keystore/
 *.keystore
 *.jks
+*.pem
+*.key
 
 # ==============================================================================
 # Build Outputs, Dependencies & Caches (reproducible via build)
@@ -51,7 +53,3 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
-# ==============================================================================
-# Local AI / Agent Instructions
-# ==============================================================================
-GEMINI.md
