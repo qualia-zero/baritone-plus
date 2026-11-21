@@ -188,7 +188,7 @@ public class BuildPortalAction implements Action {
             );
 
             client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, hitResult);
-            client.player.swing(InteractionHand.MAIN_HAND);
+            AutoCrafter.swingMainHand(client);
             AutoCrafter.log(client, "§aLighting Nether Portal at " + obsidianPos.toShortString());
 
             BaritonePlusClient.TASK_MANAGER.prependAction(this);
@@ -241,7 +241,7 @@ public class BuildPortalAction implements Action {
         );
 
         client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, hitResult);
-        client.player.swing(InteractionHand.MAIN_HAND);
+        AutoCrafter.swingMainHand(client);
         AutoCrafter.log(client, "§aPlacing " + itemToSelect + " at " + targetPos.toShortString());
 
         BaritonePlusClient.TASK_MANAGER.prependAction(this);

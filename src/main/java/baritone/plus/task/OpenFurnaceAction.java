@@ -42,7 +42,7 @@ public class OpenFurnaceAction implements Action {
         );
 
         client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, hitResult);
-        client.player.swing(InteractionHand.MAIN_HAND);
+        AutoCrafter.swingMainHand(client);
     }
 
     @Override

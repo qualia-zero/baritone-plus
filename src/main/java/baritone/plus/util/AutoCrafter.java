@@ -10,12 +10,30 @@ import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
 
 public class AutoCrafter {
 
     public static int screenCloseDelay = -1;
+
+    /**
+     * Swings the player's main hand, supporting both Minecraft 26.3+ and older 26.x releases.
+     */
+    public static void swingMainHand(Minecraft client) {
+        if (client.player == null) return;
+        try {
+            client.player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+        } catch (NoSuchMethodError | NoClassDefFoundError e) {
+            try {
+                client.player.getClass().getMethod("swing", InteractionHand.class)
+                        .invoke(client.player, InteractionHand.MAIN_HAND);
+            } catch (Exception ignored) {
+            }
+        }
+    }
 
     public static void clickSlot(Minecraft client, int syncId, int slotId, int button, ContainerInput actionType) {
         if (client.gameMode != null && client.player != null) {

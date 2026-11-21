@@ -28,11 +28,11 @@ Baritone+ registers native Fabric client commands (`/`) with tab auto-completion
 
 ## Requirements
 
-- **Minecraft:** `26.2+`
+- **Minecraft:** `26.2+` (built against `26.3`)
 - **Fabric Loader:** `>=0.16.0`
 - **Fabric API**
 - **Java:** `25+`
-- **Baritone:** Required at runtime (Fabric `>=1.18.0`).
+- **Baritone:** Required at runtime (Fabric `>=1.18.0`, built against `v1.20.0`).
 
 ---
 
