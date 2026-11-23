@@ -177,6 +177,13 @@ public class AiAgentManager {
             tickWaitingAction(client);
         } else if (state == State.WAITING_CRAFT) {
             tickWaitingCraft(client);
+        } else if (state == State.WAITING_API && !isBaritoneBusy() && !BaritonePlusClient.AUTO_EAT.isEating()) {
+            if (client.options != null) {
+                client.options.keyAttack.setDown(false);
+            }
+            if (client.gameMode != null) {
+                client.gameMode.stopDestroyBlock();
+            }
         }
     }
 
@@ -201,6 +208,8 @@ public class AiAgentManager {
         if (!settledIdle && !danger && !timedOut) {
             return;
         }
+
+        stopBaritoneCleanly(client);
 
         String status = danger ? "interrupted_low_hp" : (timedOut ? "timeout" : "completed");
         JsonObject resultPayload = new JsonObject();
@@ -347,6 +356,7 @@ public class AiAgentManager {
         geminiClient.createInteraction(
                 apiKey,
                 cfg.aiBridge.model,
+                cfg.aiBridge.thinkingLevel,
                 SYSTEM_INSTRUCTION,
                 input,
                 lastInteractionId,
@@ -361,6 +371,7 @@ public class AiAgentManager {
 
         if (resp.error() != null) {
             AutoCrafter.log(client, "§c[AI Error] " + resp.error());
+            stopBaritoneCleanly(client);
             clearRunState();
             return;
         }
@@ -376,12 +387,14 @@ public class AiAgentManager {
         List<GeminiClient.FunctionCall> calls = resp.functionCalls();
         int maxSteps = BaritonePlusConfig.get().aiBridge.maxStepsPerRequest;
         if (calls.isEmpty()) {
+            stopBaritoneCleanly(client);
             clearRunState();
             return;
         }
 
         if (stepsInCurrentRun >= maxSteps) {
             AutoCrafter.log(client, "§e[AI] Reached maxStepsPerRequest (" + maxSteps + ").");
+            stopBaritoneCleanly(client);
             clearRunState();
             return;
         }
@@ -437,13 +450,43 @@ public class AiAgentManager {
             throw new IllegalStateException("Player is not in game.");
         }
         JsonObject args = fc.arguments();
-        if (!args.has("pattern") || !args.get("pattern").isJsonArray()) {
-            throw new IllegalArgumentException("Missing 'pattern' array (4 or 9 strings).");
-        }
-        JsonArray patternArr = args.getAsJsonArray("pattern");
-        int gridSize = patternArr.size();
-        if (gridSize != 4 && gridSize != 9) {
-            throw new IllegalArgumentException("'pattern' must have length 4 (2x2) or 9 (3x3), got " + gridSize);
+        List<String> parsed;
+        int gridSize;
+
+        if (args.has("slots") && args.get("slots").isJsonObject()) {
+            int reqSize = args.has("grid_size") ? args.get("grid_size").getAsInt() : 2;
+            if (reqSize != 2 && reqSize != 3) {
+                throw new IllegalArgumentException("'grid_size' must be 2 or 3, got " + reqSize);
+            }
+            gridSize = reqSize * reqSize;
+            parsed = new ArrayList<>(gridSize);
+            for (int i = 0; i < gridSize; i++) parsed.add("");
+            JsonObject slotsObj = args.getAsJsonObject("slots");
+            for (var entry : slotsObj.entrySet()) {
+                int slotNum;
+                try {
+                    slotNum = Integer.parseInt(entry.getKey().trim());
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid slot key: " + entry.getKey());
+                }
+                if (slotNum < 1 || slotNum > gridSize) {
+                    throw new IllegalArgumentException("Slot index " + slotNum + " out of range 1.." + gridSize);
+                }
+                String val = entry.getValue().isJsonNull() ? "" : entry.getValue().getAsString().trim();
+                parsed.set(slotNum - 1, val);
+            }
+        } else if (args.has("pattern") && args.get("pattern").isJsonArray()) {
+            JsonArray patternArr = args.getAsJsonArray("pattern");
+            gridSize = patternArr.size();
+            if (gridSize != 4 && gridSize != 9) {
+                throw new IllegalArgumentException("'pattern' must have length 4 (2x2) or 9 (3x3), got " + gridSize);
+            }
+            parsed = new ArrayList<>(gridSize);
+            for (int i = 0; i < gridSize; i++) {
+                parsed.add(patternArr.get(i).isJsonNull() ? "" : patternArr.get(i).getAsString().trim());
+            }
+        } else {
+            throw new IllegalArgumentException("Missing 'slots' object (with 'grid_size' 2 or 3).");
         }
 
         stopBaritoneCleanly(client);
@@ -452,11 +495,6 @@ public class AiAgentManager {
         boolean isCraftingScreen = AutoCrafter.isCraftingScreenOpen(client);
         if (is3x3 && !isCraftingScreen) {
             throw new IllegalStateException("3x3 recipe requires an open crafting_table GUI. Place and interact with a crafting_table first.");
-        }
-
-        List<String> parsed = new ArrayList<>(gridSize);
-        for (int i = 0; i < gridSize; i++) {
-            parsed.add(patternArr.get(i).isJsonNull() ? "" : patternArr.get(i).getAsString().trim());
         }
 
         this.craftPattern = parsed;
@@ -473,7 +511,7 @@ public class AiAgentManager {
             this.craftDelayTicks = 2;
         }
 
-        AutoCrafter.log(client, "§d[AI] §7Crafting (" + gridSize + "-grid, " + craftTotalBatches + "x)...");
+        AutoCrafter.log(client, "§d[AI] §7Crafting (" + (is3x3 ? "3x3" : "2x2") + ", " + craftTotalBatches + "x)...");
     }
 
     private boolean isLongRunningCall(GeminiClient.FunctionCall fc) {
@@ -542,6 +580,13 @@ public class AiAgentManager {
         }
         if (client != null && client.options != null) {
             client.options.keyAttack.setDown(false);
+            client.options.keyUse.setDown(false);
+            client.options.keyUp.setDown(false);
+            client.options.keyDown.setDown(false);
+            client.options.keyLeft.setDown(false);
+            client.options.keyRight.setDown(false);
+            client.options.keyJump.setDown(false);
+            client.options.keyShift.setDown(false);
         }
     }
 
@@ -908,17 +953,15 @@ public class AiAgentManager {
                 baritoneProps, List.of("command")));
 
         JsonObject gridProps = new JsonObject();
-        JsonObject patternProp = new JsonObject();
-        patternProp.addProperty("type", "array");
-        JsonObject itemType = new JsonObject();
-        itemType.addProperty("type", "string");
-        patternProp.add("items", itemType);
-        patternProp.addProperty("description", "4 strings (2x2 inventory grid) or 9 strings (3x3 crafting table grid), row-major, '' for empty, e.g. ['oak_planks','','oak_planks','']");
-        gridProps.add("pattern", patternProp);
+        gridProps.add("grid_size", prop("integer", "2 for 2x2 inventory grid (slots 1..4) or 3 for 3x3 crafting table grid (slots 1..9)"));
+        JsonObject slotsProp = new JsonObject();
+        slotsProp.addProperty("type", "object");
+        slotsProp.addProperty("description", "Map of slot number ('1'..'4' or '1'..'9') to item name, e.g. {'1':'oak_log'} for planks, {'1':'oak_planks','3':'oak_planks'} for sticks, {'1':'oak_planks','2':'oak_planks','3':'oak_planks','5':'stick','8':'stick'} for wooden_pickaxe");
+        gridProps.add("slots", slotsProp);
         gridProps.add("count", prop("integer", "Number of craft batches to execute (1-64, default 1)"));
         tools.add(tool("craft_grid",
                 "Crafts any 2x2 or 3x3 recipe directly in the crafting grid (tick-paced to prevent desyncs) and returns the updated game state.",
-                gridProps, List.of("pattern")));
+                gridProps, List.of("grid_size", "slots")));
 
         JsonObject placeProps = new JsonObject();
         placeProps.add("item", prop("string", "Block item name in inventory, e.g. 'crafting_table', 'furnace', 'chest'"));

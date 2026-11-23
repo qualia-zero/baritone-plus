@@ -474,7 +474,19 @@ public class BaritonePlusScreen extends Screen {
                 aiPromptText, s -> aiPromptText = s, "Ask AI",
                 val -> BaritonePlusClient.AI_AGENT.ask(this.minecraft, val));
 
-        // Row 3: Allow Chat Send | Allow GUI Interaction
+        // Row 3: Thinking Level | Max Steps
+        addActionRow(x + 0, y, halfWidth, "Thinking: " + cfg.aiBridge.thinkingLevel.name(), () -> {
+            var levels = BaritonePlusConfig.ThinkingLevel.values();
+            cfg.aiBridge.thinkingLevel = levels[(cfg.aiBridge.thinkingLevel.ordinal() + 1) % levels.length];
+            BaritonePlusConfig.save();
+            this.rebuildWidgets();
+        });
+        addIntStepperRow(x + halfWidth + 8, y, halfWidth, "Max Steps",
+                () -> cfg.aiBridge.maxStepsPerRequest, 1, 1, 50,
+                val -> cfg.aiBridge.maxStepsPerRequest = val);
+        y += ROW_HEIGHT;
+
+        // Row 4: Allow Chat Send | Allow GUI Interaction
         addToggleRow(x, y, halfWidth, "Allow AI Chat Send",
                 () -> cfg.aiBridge.allowChatSend,
                 val -> cfg.aiBridge.allowChatSend = val);
@@ -483,22 +495,10 @@ public class BaritonePlusScreen extends Screen {
                 val -> cfg.aiBridge.allowGuiInteraction = val);
         y += ROW_HEIGHT;
 
-        // Row 4: Allow Combat Override | Max Steps
+        // Row 5: Allow Combat Override | Reset Memory
         addToggleRow(x, y, halfWidth, "Allow Combat Override",
                 () -> cfg.aiBridge.allowCombatOverride,
                 val -> cfg.aiBridge.allowCombatOverride = val);
-        addIntStepperRow(x + halfWidth + 8, y, halfWidth, "Max Steps",
-                () -> cfg.aiBridge.maxStepsPerRequest, 1, 1, 50,
-                val -> cfg.aiBridge.maxStepsPerRequest = val);
-        y += ROW_HEIGHT;
-
-        // Row 5: API Key status | Reset Memory
-        String keyStatus = AiSecrets.hasApiKey() ? "API Key: §aConfigured" : "API Key: §cMissing (/bp ai key)";
-        Button keyBtn = Button.builder(Component.literal(keyStatus), btn -> {})
-                .bounds(x, y, halfWidth, 20).build();
-        keyBtn.active = false;
-        this.addRenderableWidget(keyBtn);
-
         this.addRenderableWidget(Button.builder(Component.literal("Reset Memory"), btn -> {
             BaritonePlusClient.AI_AGENT.resetMemory();
             if (this.minecraft != null) {
@@ -506,6 +506,14 @@ public class BaritonePlusScreen extends Screen {
             }
             this.rebuildWidgets();
         }).bounds(x + halfWidth + 8, y, halfWidth, 20).build());
+        y += ROW_HEIGHT;
+
+        // Row 6: API Key status
+        String keyStatus = AiSecrets.hasApiKey() ? "API Key: §aConfigured" : "API Key: §cMissing (/bp ai key)";
+        Button keyBtn = Button.builder(Component.literal(keyStatus), btn -> {})
+                .bounds(x, y, CONTROL_WIDTH, 20).build();
+        keyBtn.active = false;
+        this.addRenderableWidget(keyBtn);
     }
 
     private void buildCombatTab(int centerX, int y, BaritonePlusConfig cfg) {

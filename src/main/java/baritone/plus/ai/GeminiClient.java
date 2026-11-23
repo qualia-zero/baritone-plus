@@ -1,5 +1,6 @@
 package baritone.plus.ai;
 
+import baritone.plus.config.BaritonePlusConfig;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -42,6 +43,7 @@ public class GeminiClient {
     public CompletableFuture<InteractionResponse> createInteraction(
             String apiKey,
             String model,
+            BaritonePlusConfig.ThinkingLevel thinkingLevel,
             String systemInstruction,
             JsonElement input,
             String previousInteractionId,
@@ -59,11 +61,21 @@ public class GeminiClient {
         if (previousInteractionId != null && !previousInteractionId.isBlank()) {
             body.addProperty("previous_interaction_id", previousInteractionId);
         }
+
+        JsonObject genConfig = new JsonObject();
+        int maxTokens = (thinkingLevel == BaritonePlusConfig.ThinkingLevel.MEDIUM
+                || thinkingLevel == BaritonePlusConfig.ThinkingLevel.HIGH) ? 4096 : 1536;
+        genConfig.addProperty("max_output_tokens", maxTokens);
+        if (thinkingLevel != null && thinkingLevel != BaritonePlusConfig.ThinkingLevel.DEFAULT) {
+            genConfig.addProperty("thinking_level", thinkingLevel.name().toLowerCase());
+        }
+        body.add("generation_config", genConfig);
+
         body.addProperty("store", true);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(INTERACTIONS_URL))
-                .timeout(Duration.ofSeconds(45))
+                .timeout(Duration.ofSeconds(75))
                 .header("Content-Type", "application/json")
                 .header("x-goog-api-key", apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))

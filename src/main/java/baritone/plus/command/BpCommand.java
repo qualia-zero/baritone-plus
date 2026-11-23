@@ -130,6 +130,10 @@ public class BpCommand {
                     if (v.isBlank()) throw new IllegalArgumentException("Model cannot be blank");
                     BaritonePlusConfig.get().aiBridge.model = v.trim();
                 }));
+        map.put("ai.thinkingLevel", new ConfigEntry(
+                () -> BaritonePlusConfig.get().aiBridge.thinkingLevel.name(),
+                v -> BaritonePlusConfig.get().aiBridge.thinkingLevel =
+                        BaritonePlusConfig.ThinkingLevel.valueOf(v.trim().toUpperCase())));
         map.put("ai.host", new ConfigEntry(
                 () -> BaritonePlusConfig.get().aiBridge.host,
                 v -> {
@@ -338,11 +342,35 @@ public class BpCommand {
                                     send(ctx.getSource(), "§7Reset Gemini conversation memory.");
                                     return 1;
                                 }))
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("thinking")
+                                .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("level", StringArgumentType.word())
+                                        .suggests((context, builder) -> {
+                                            String rem = builder.getRemaining().toLowerCase();
+                                            for (var lvl : BaritonePlusConfig.ThinkingLevel.values()) {
+                                                String name = lvl.name().toLowerCase();
+                                                if (name.startsWith(rem)) builder.suggest(name);
+                                            }
+                                            return builder.buildFuture();
+                                        })
+                                        .executes(ctx -> {
+                                            String raw = StringArgumentType.getString(ctx, "level");
+                                            try {
+                                                var level = BaritonePlusConfig.ThinkingLevel.valueOf(raw.trim().toUpperCase());
+                                                BaritonePlusConfig.get().aiBridge.thinkingLevel = level;
+                                                BaritonePlusConfig.save();
+                                                send(ctx.getSource(), "§aSet Gemini thinking level to §f" + level.name());
+                                                return 1;
+                                            } catch (IllegalArgumentException e) {
+                                                send(ctx.getSource(), "§cInvalid level. Use: default, minimal, low, medium, high");
+                                                return 0;
+                                            }
+                                        })))
                         .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("status")
                                 .executes(ctx -> {
                                     var ai = BaritonePlusConfig.get().aiBridge;
                                     send(ctx.getSource(), "§7AI: " + (ai.enabled ? "§aON" : "§cOFF")
                                             + " §7| Model: §f" + ai.model
+                                            + " §7| Thinking: §f" + ai.thinkingLevel.name()
                                             + " §7| Key: " + (AiSecrets.hasApiKey() ? "§aConfigured" : "§cMissing"));
                                     return 1;
                                 })))

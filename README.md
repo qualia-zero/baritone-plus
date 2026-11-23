@@ -41,6 +41,7 @@ Baritone+ registers all client-side commands under the unified `/bp` namespace w
 | `/bp ai ask <prompt>` | Sends a task/prompt to the Gemini agent with live game state and function calling. |
 | `/bp ai key <apiKey>` | Saves your Gemini API key locally to `config/baritone-plus-secrets.txt` (or use `GEMINI_API_KEY` env var). |
 | `/bp ai model <model>` | Sets the Gemini model (e.g., `gemini-4-hydrogen`, `gemini-3.5-flash-lite`, `gemini-4-neon`). |
+| `/bp ai thinking <level>` | Sets Gemini thinking level (`default`, `minimal`, `low`, `medium`, `high`). |
 | `/bp ai reset` | Clears the current Gemini conversation memory (`previous_interaction_id`). |
 
 ---

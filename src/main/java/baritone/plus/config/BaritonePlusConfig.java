@@ -46,6 +46,14 @@ public class BaritonePlusConfig {
         HUNGER
     }
 
+    public enum ThinkingLevel {
+        DEFAULT,
+        MINIMAL,
+        LOW,
+        MEDIUM,
+        HIGH
+    }
+
     public GeneralConfig general = new GeneralConfig();
     public CombatConfig combat = new CombatConfig();
     public AutoEatConfig autoEat = new AutoEatConfig();
@@ -102,6 +110,7 @@ public class BaritonePlusConfig {
     public static class AiBridgeConfig {
         public boolean enabled = false;
         public String model = "gemini-4-hydrogen";
+        public ThinkingLevel thinkingLevel = ThinkingLevel.LOW;
         public int maxStepsPerRequest = 20;
         public String host = "127.0.0.1";
         public int port = 8765;
@@ -202,6 +211,7 @@ public class BaritonePlusConfig {
         if (aiBridge.model == null || aiBridge.model.isBlank() || "gemini-4-argon".equals(aiBridge.model)) {
             aiBridge.model = "gemini-4-hydrogen";
         }
+        if (aiBridge.thinkingLevel == null) aiBridge.thinkingLevel = ThinkingLevel.LOW;
         if (aiBridge.maxStepsPerRequest < 1) aiBridge.maxStepsPerRequest = 20;
         if (aiBridge.host == null || aiBridge.host.isBlank()) aiBridge.host = "127.0.0.1";
     }
