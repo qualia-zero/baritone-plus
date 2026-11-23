@@ -11,7 +11,8 @@ An advanced addon for [Baritone](https://github.com/cabaletta/baritone) adding a
 - **Task Scheduling & Management:** Tick-based action queues with graceful error recovery.
 - **Typed JSON Configuration & Presets:** Central `config/baritone-plus.json` with `VANILLA` and `STRICT` anti-cheat profiles and automatic migration from legacy beta config.
 - **Native Config & Control GUI + Unified `/bp` Commands:** Built-in client-side `/bp` commands with auto-completion and a lightweight native Vanilla screen (`Right Shift` or `/bp gui`) featuring a `Control` tab and a `Baritone` tab (common settings + live modified settings viewer/reset).
-- **Optional Embedded Gemini AI Agent:** Disabled by default (`aiBridge.enabled = false`). When enabled with a `GEMINI_API_KEY` (or `/bp ai key <key>`), uses the Gemini `v1/interactions` REST API directly inside the mod JAR with function calling (`get_game_state`, `craft_item`, `baritone_command`, `click_gui_slot`, `send_chat`, `stop_all`) and stateful `previous_interaction_id` memory.
+- **Built-in Combat & Survival Defense:** Meteor-inspired tick-based `CombatController` and `RotationManager` with smooth turn-speed-limited aiming, attack cooldown respect, offhand `AutoShield`, and hotbar `AutoEat` (persisting continuously between tasks when enabled).
+- **Optional Embedded Gemini AI Orchestrator:** Disabled by default (`aiBridge.enabled = false`). When enabled with a `GEMINI_API_KEY` (or `/bp ai key <key>`), uses the Gemini `v1/interactions` REST API directly inside the mod JAR as a step-by-step autonomous orchestrator: waits for long-running Baritone/crafting tasks to finish, inspects updated live state (inventory, nearby entities, recent chat, scoreboard, open GUI slots), replies in the user's language, and decides the next action (`get_game_state`, `craft_item`, `baritone_command`, `set_combat_defense`, `interact_nearby`, `click_gui_slot`, `close_gui`, `send_chat`, `stop_all`).
 
 ---
 

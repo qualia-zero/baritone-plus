@@ -99,6 +99,20 @@ public class TaskManager {
         updateThrowawaySettings(Minecraft.getInstance(), false);
     }
 
+    public boolean isBusy() {
+        return currentTask != null || retryDelay > 0;
+    }
+
+    public String getStatusSummary() {
+        if (currentTask != null && lastTargetItem != null) {
+            return "crafting " + lastTargetAmount + "x " + lastTargetItem;
+        }
+        if (retryDelay > 0 && lastTargetItem != null) {
+            return "retrying " + lastTargetAmount + "x " + lastTargetItem;
+        }
+        return "idle";
+    }
+
     public void prependAction(Action action) {
         if (currentTask != null) {
             currentTask.prependAction(action);

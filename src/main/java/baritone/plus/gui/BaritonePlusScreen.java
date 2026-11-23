@@ -485,7 +485,7 @@ public class BaritonePlusScreen extends Screen {
                 () -> cfg.aiBridge.allowCombatOverride,
                 val -> cfg.aiBridge.allowCombatOverride = val);
         addIntStepperRow(x + halfWidth + 8, y, halfWidth, "Max Steps",
-                () -> cfg.aiBridge.maxStepsPerRequest, 1, 1, 20,
+                () -> cfg.aiBridge.maxStepsPerRequest, 1, 1, 50,
                 val -> cfg.aiBridge.maxStepsPerRequest = val);
         y += ROW_HEIGHT;
 

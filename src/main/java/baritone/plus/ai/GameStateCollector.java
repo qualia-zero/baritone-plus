@@ -2,11 +2,18 @@ package baritone.plus.ai;
 
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
+import baritone.plus.BaritonePlusClient;
+import baritone.plus.config.BaritonePlusConfig;
+import baritone.plus.network.ChatTracker;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.scores.DisplaySlot;
@@ -14,7 +21,10 @@ import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.PlayerScoreEntry;
 import net.minecraft.world.scores.Scoreboard;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -50,6 +60,16 @@ public class GameStateCollector {
                         || baritone.getFarmProcess().isActive()
         );
         root.addProperty("baritoneBusy", baritoneBusy);
+        root.addProperty("baritonePlusTask", BaritonePlusClient.TASK_MANAGER.getStatusSummary());
+
+        // Combat & Defense state
+        BaritonePlusConfig.CombatConfig combatCfg = BaritonePlusConfig.get().combat;
+        JsonObject combatJson = new JsonObject();
+        combatJson.addProperty("enabled", combatCfg.enabled);
+        combatJson.addProperty("autoShield", combatCfg.autoShield);
+        combatJson.addProperty("autoEat", combatCfg.autoEat);
+        combatJson.addProperty("inDanger", BaritonePlusClient.COMBAT_CONTROLLER.isInDanger(client));
+        root.add("combat", combatJson);
 
         // Compact inventory summary (item registry path -> total count)
         Map<String, Integer> invCounts = new LinkedHashMap<>();
@@ -64,6 +84,39 @@ public class GameStateCollector {
         JsonObject invJson = new JsonObject();
         invCounts.forEach(invJson::addProperty);
         root.add("inventory", invJson);
+
+        // Nearby entities within 16 blocks (up to 15 closest)
+        List<Entity> nearby = new ArrayList<>();
+        for (Entity entity : client.level.entitiesForRendering()) {
+            if (entity != client.player && entity.isAlive() && client.player.distanceToSqr(entity) <= 16.0 * 16.0) {
+                nearby.add(entity);
+            }
+        }
+        nearby.sort(Comparator.comparingDouble(e -> client.player.distanceToSqr(e)));
+        JsonArray entitiesArr = new JsonArray();
+        int maxEntities = Math.min(15, nearby.size());
+        for (int i = 0; i < maxEntities; i++) {
+            Entity e = nearby.get(i);
+            JsonObject eObj = new JsonObject();
+            eObj.addProperty("type", BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath());
+            eObj.addProperty("name", e.getName().getString());
+            eObj.addProperty("distance", round1(client.player.distanceTo(e)));
+            eObj.addProperty("hostile", e instanceof Monster);
+            eObj.addProperty("isPlayer", e instanceof Player);
+            if (e instanceof LivingEntity living) {
+                eObj.addProperty("health", round1(living.getHealth()));
+            }
+            entitiesArr.add(eObj);
+        }
+        root.add("nearbyEntities", entitiesArr);
+
+        // Recent chat messages (last 10)
+        List<String> recentChat = ChatTracker.getRecent(10);
+        if (!recentChat.isEmpty()) {
+            JsonArray chatArr = new JsonArray();
+            recentChat.forEach(chatArr::add);
+            root.add("recentChat", chatArr);
+        }
 
         // Sidebar scoreboard (useful for subserver/network context)
         try {

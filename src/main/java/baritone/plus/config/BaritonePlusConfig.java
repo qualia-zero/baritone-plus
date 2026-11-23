@@ -74,7 +74,7 @@ public class BaritonePlusConfig {
     public static class AiBridgeConfig {
         public boolean enabled = false;
         public String model = "gemini-4-hydrogen";
-        public int maxStepsPerRequest = 8;
+        public int maxStepsPerRequest = 20;
         public String host = "127.0.0.1";
         public int port = 8765;
         public int snapshotIntervalTicks = 20;
@@ -163,7 +163,7 @@ public class BaritonePlusConfig {
         if (aiBridge.model == null || aiBridge.model.isBlank() || "gemini-4-argon".equals(aiBridge.model)) {
             aiBridge.model = "gemini-4-hydrogen";
         }
-        if (aiBridge.maxStepsPerRequest < 1) aiBridge.maxStepsPerRequest = 8;
+        if (aiBridge.maxStepsPerRequest < 1) aiBridge.maxStepsPerRequest = 20;
         if (aiBridge.host == null || aiBridge.host.isBlank()) aiBridge.host = "127.0.0.1";
     }
 

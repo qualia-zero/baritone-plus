@@ -1,9 +1,11 @@
 package baritone.plus;
 
 import baritone.plus.ai.AiAgentManager;
+import baritone.plus.combat.CombatController;
 import baritone.plus.command.BpCommand;
 import baritone.plus.config.BaritonePlusConfig;
 import baritone.plus.gui.BaritonePlusScreen;
+import baritone.plus.network.ChatTracker;
 import baritone.plus.task.TaskManager;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
@@ -19,6 +21,7 @@ public class BaritonePlusClient implements ClientModInitializer {
 
     public static final Logger LOGGER = LoggerFactory.getLogger("baritone-plus");
     public static final TaskManager TASK_MANAGER = new TaskManager();
+    public static final CombatController COMBAT_CONTROLLER = new CombatController();
     public static final AiAgentManager AI_AGENT = new AiAgentManager();
 
     private static final KeyMapping.Category KEY_CATEGORY =
@@ -35,6 +38,7 @@ public class BaritonePlusClient implements ClientModInitializer {
         LOGGER.info("Initializing Baritone Plus (Client)...");
 
         BaritonePlusConfig.load();
+        ChatTracker.register();
 
         openGuiKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.baritone_plus.open_gui",
@@ -59,7 +63,9 @@ public class BaritonePlusClient implements ClientModInitializer {
                     client.gui.setScreen(new BaritonePlusScreen(null));
                 }
             }
+            COMBAT_CONTROLLER.tick(client);
             TASK_MANAGER.tick(client);
+            AI_AGENT.tick(client);
         });
     }
 }
