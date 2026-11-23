@@ -160,7 +160,9 @@ public class BaritonePlusConfig {
 
         if (chat == null) chat = new ChatConfig();
         if (aiBridge == null) aiBridge = new AiBridgeConfig();
-        if (aiBridge.model == null || aiBridge.model.isBlank()) aiBridge.model = "gemini-4-hydrogen";
+        if (aiBridge.model == null || aiBridge.model.isBlank() || "gemini-4-argon".equals(aiBridge.model)) {
+            aiBridge.model = "gemini-4-hydrogen";
+        }
         if (aiBridge.maxStepsPerRequest < 1) aiBridge.maxStepsPerRequest = 8;
         if (aiBridge.host == null || aiBridge.host.isBlank()) aiBridge.host = "127.0.0.1";
     }

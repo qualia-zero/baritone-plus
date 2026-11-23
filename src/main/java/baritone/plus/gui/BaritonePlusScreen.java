@@ -451,7 +451,7 @@ public class BaritonePlusScreen extends Screen {
                     if (!val) BaritonePlusClient.AI_AGENT.stop();
                 });
 
-        String[] models = {"gemini-4-hydrogen", "gemini-3.5-flash-lite", "gemini-4-argon", "gemini-4-neon"};
+        String[] models = {"gemini-4-hydrogen", "gemini-3.5-flash-lite", "gemini-4-neon"};
         addActionRow(x + halfWidth + 8, y, halfWidth, "Model: " + cfg.aiBridge.model, () -> {
             int idx = 0;
             for (int i = 0; i < models.length; i++) {

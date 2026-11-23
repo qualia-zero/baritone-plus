@@ -263,7 +263,7 @@ public class BpCommand {
                         .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("model")
                                 .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("model", StringArgumentType.word())
                                         .suggests((context, builder) -> {
-                                            String[] models = {"gemini-4-hydrogen", "gemini-3.5-flash-lite", "gemini-4-argon", "gemini-4-neon"};
+                                            String[] models = {"gemini-4-hydrogen", "gemini-3.5-flash-lite", "gemini-4-neon"};
                                             String rem = builder.getRemaining().toLowerCase();
                                             for (String m : models) {
                                                 if (m.startsWith(rem)) builder.suggest(m);
