@@ -5,19 +5,21 @@ import baritone.api.IBaritone;
 import baritone.plus.BaritonePlusClient;
 import baritone.plus.combat.RotationManager;
 import baritone.plus.config.BaritonePlusConfig;
-import baritone.plus.task.CraftingTask;
 import baritone.plus.util.AutoCrafter;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -26,9 +28,9 @@ import net.minecraft.world.phys.Vec3;
 import java.util.List;
 
 /**
- * Optional Gemini-powered autonomous step-by-step orchestrator embedded directly in Baritone+.
- * Waits for long-running Baritone / Baritone+ tasks to complete, inspects updated game state,
- * and decides the next step until the user's goal is reached.
+ * Optional Gemini-powered atomic orchestrator embedded directly in Baritone+.
+ * Uses pure atomic primitives (Baritone commands, craft_grid, place_block, equip_item,
+ * interact_nearby, click_gui_slot, send_chat, set_combat_defense) instead of a fixed planner.
  */
 public class AiAgentManager {
 
@@ -39,20 +41,19 @@ public class AiAgentManager {
     }
 
     private static final String SYSTEM_INSTRUCTION =
-            "You are the autonomous AI orchestrator embedded inside Baritone+ for Minecraft (Fabric).\n"
+            "You are the autonomous atomic AI orchestrator embedded inside Baritone+ for Minecraft (Fabric).\n"
                     + "Rules:\n"
                     + "1. LANGUAGE: Always reply in the exact same language as the user's instruction "
                     + "(e.g. German prompt -> German replies, English prompt -> English replies).\n"
-                    + "2. ORCHESTRATION: You replace a fixed orchestrator. Break goals into clear steps using "
-                    + "Baritone navigation/mining, Baritone+ crafting, container/GUI interaction, and built-in "
-                    + "Meteor-inspired combat/defense.\n"
-                    + "3. STEP-BY-STEP VERIFICATION: After every tool call, carefully inspect the returned live "
-                    + "game state (inventory, position, openScreen, nearbyEntities, recentChat, health, combat) "
-                    + "before choosing the next step. Never assume a step succeeded — verify from the new state "
-                    + "and adapt or recover if something failed.\n"
-                    + "4. PERSISTENT DEFENSE: Keep defensive functions (combat.enabled, autoShield, autoEat) "
-                    + "active between tasks whenever threats exist or on survival/multiplayer servers. "
-                    + "Do not disable autoShield or autoEat between tasks unless the user explicitly asks.\n"
+                    + "2. ATOMIC ORCHESTRATION: You replace a fixed orchestrator. There is no high-level autocraft shortcut. "
+                    + "Plan and execute every step atomically using: baritone_command (mine, goto, explore, farm, follow), "
+                    + "craft_grid (any 2x2 inventory or 3x3 crafting table recipe), place_block, interact_nearby, "
+                    + "click_gui_slot, close_gui, equip_item, set_combat_defense, send_chat, and stop_all.\n"
+                    + "3. STEP-BY-STEP VERIFICATION: After every tool call, inspect the returned live game state "
+                    + "(inventory, position, openScreen, nearbyEntities, recentChat, health, combat) before choosing "
+                    + "the next step. Never assume a step succeeded — verify from the new state and recover if needed.\n"
+                    + "4. PERSISTENT DEFENSE: Self-preservation (autoEat, autoShield, combat) runs independently of AI. "
+                    + "Keep defensive functions active between tasks unless the user explicitly asks to disable them.\n"
                     + "5. OUTPUT: Keep chat messages concise. Only finish when the user's goal is complete or blocked.";
 
     private static final JsonArray TOOLS = buildTools();
@@ -66,7 +67,7 @@ public class AiAgentManager {
     private int stepsInCurrentRun = 0;
     private long lastChatSentMs = 0L;
 
-    // Pending long-running action state
+    // Pending long-running Baritone action state
     private GeminiClient.FunctionCall pendingActionCall = null;
     private String pendingActionSummary = null;
     private JsonArray pendingResults = null;
@@ -138,7 +139,7 @@ public class AiAgentManager {
             return;
         }
 
-        boolean busy = BaritonePlusClient.TASK_MANAGER.isBusy() || isBaritoneBusy();
+        boolean busy = isBaritoneBusy();
         boolean danger = BaritonePlusClient.COMBAT_CONTROLLER.isInDanger(client);
         boolean timedOut = actionWaitTicks >= ACTION_TIMEOUT_TICKS;
 
@@ -224,7 +225,7 @@ public class AiAgentManager {
         for (GeminiClient.FunctionCall fc : calls) {
             if (longRunningCall == null && isLongRunningCall(fc)) {
                 try {
-                    longRunningSummary = startLongRunningTool(client, fc);
+                    longRunningSummary = startBaritoneCommand(client, fc.arguments());
                     longRunningCall = fc;
                 } catch (Exception e) {
                     syncResults.add(errorResult(fc, "Tool error: " + e.getMessage()));
@@ -248,34 +249,18 @@ public class AiAgentManager {
     }
 
     private boolean isLongRunningCall(GeminiClient.FunctionCall fc) {
-        if ("craft_item".equals(fc.name())) {
-            return true;
+        if (!"baritone_command".equals(fc.name())) {
+            return false;
         }
-        if ("baritone_command".equals(fc.name())) {
-            String cmd = getStringArg(fc.arguments(), "command");
-            if (cmd == null) return false;
-            String clean = cmd.trim().toLowerCase();
-            if (clean.startsWith("#")) clean = clean.substring(1).trim();
-            return !(clean.startsWith("stop") || clean.startsWith("pause"));
-        }
-        return false;
+        String cmd = getStringArg(fc.arguments(), "command");
+        if (cmd == null) return false;
+        String clean = cmd.trim().toLowerCase();
+        if (clean.startsWith("#")) clean = clean.substring(1).trim();
+        return !(clean.startsWith("stop") || clean.startsWith("pause"));
     }
 
-    private String startLongRunningTool(Minecraft client, GeminiClient.FunctionCall fc) {
-        if ("craft_item".equals(fc.name())) {
-            String item = getStringArg(fc.arguments(), "item");
-            if (item == null || item.isBlank()) {
-                throw new IllegalArgumentException("Missing 'item'");
-            }
-            int amount = fc.arguments().has("amount")
-                    ? Math.max(1, Math.min(64, fc.arguments().get("amount").getAsInt()))
-                    : 1;
-            AutoCrafter.log(client, "§d[AI] §7Crafting " + amount + "x " + item.trim());
-            BaritonePlusClient.TASK_MANAGER.startTask(new CraftingTask(client, item.trim(), amount));
-            return "craft_item " + amount + "x " + item.trim();
-        }
-
-        String cmd = getStringArg(fc.arguments(), "command");
+    private String startBaritoneCommand(Minecraft client, JsonObject args) {
+        String cmd = getStringArg(args, "command");
         if (cmd == null || cmd.isBlank()) {
             throw new IllegalArgumentException("Missing 'command'");
         }
@@ -295,7 +280,10 @@ public class AiAgentManager {
         try {
             String output = switch (fc.name()) {
                 case "get_game_state" -> GameStateCollector.collect(client).toString();
-                case "baritone_command" -> startLongRunningTool(client, fc);
+                case "baritone_command" -> startBaritoneCommand(client, fc.arguments());
+                case "craft_grid" -> toolCraftGrid(client, fc.arguments());
+                case "place_block" -> toolPlaceBlock(client, fc.arguments());
+                case "equip_item" -> toolEquipItem(client, fc.arguments());
                 case "set_combat_defense" -> toolSetCombatDefense(client, fc.arguments());
                 case "interact_nearby" -> toolInteractNearby(client, fc.arguments());
                 case "click_gui_slot" -> toolClickGuiSlot(client, fc.arguments());
@@ -330,6 +318,194 @@ public class AiAgentManager {
         return err;
     }
 
+    private String toolCraftGrid(Minecraft client, JsonObject args) {
+        if (client.player == null || client.gameMode == null) {
+            throw new IllegalStateException("Player is not in game.");
+        }
+        if (!args.has("pattern") || !args.get("pattern").isJsonArray()) {
+            throw new IllegalArgumentException("Missing 'pattern' array (4 or 9 strings).");
+        }
+        JsonArray pattern = args.getAsJsonArray("pattern");
+        int gridSize = pattern.size();
+        if (gridSize != 4 && gridSize != 9) {
+            throw new IllegalArgumentException("'pattern' must have length 4 (2x2) or 9 (3x3), got " + gridSize);
+        }
+        int count = args.has("count") ? Math.max(1, Math.min(64, args.get("count").getAsInt())) : 1;
+
+        boolean is3x3 = (gridSize == 9);
+        boolean isCraftingScreen = AutoCrafter.isCraftingScreenOpen(client);
+        if (is3x3 && !isCraftingScreen) {
+            throw new IllegalStateException("3x3 recipe requires an open crafting_table GUI. Place and interact with a crafting_table first.");
+        }
+        if (!is3x3 && !isCraftingScreen && !(client.gui.screen() instanceof InventoryScreen)) {
+            client.gui.setScreen(new InventoryScreen(client.player));
+        }
+
+        int searchStart = isCraftingScreen ? 10 : 9;
+        int searchEnd = isCraftingScreen ? 46 : 45;
+        int syncId = client.player.containerMenu.containerId;
+
+        // Clear any leftover items in crafting input slots (1..gridSize)
+        for (int s = 1; s <= gridSize; s++) {
+            if (!client.player.containerMenu.getSlot(s).getItem().isEmpty()) {
+                AutoCrafter.clickSlot(client, syncId, s, 0, ContainerInput.QUICK_MOVE);
+            }
+        }
+
+        int completed = 0;
+        for (int c = 0; c < count; c++) {
+            for (int i = 0; i < gridSize; i++) {
+                String itemName = pattern.get(i).isJsonNull() ? "" : pattern.get(i).getAsString().trim();
+                if (!itemName.isEmpty()) {
+                    boolean placed = AutoCrafter.moveItemToSlot(client, itemName, searchStart, searchEnd, i + 1);
+                    if (!placed) {
+                        // Return any partially placed items before reporting failure
+                        for (int s = 1; s <= gridSize; s++) {
+                            if (!client.player.containerMenu.getSlot(s).getItem().isEmpty()) {
+                                AutoCrafter.clickSlot(client, syncId, s, 0, ContainerInput.QUICK_MOVE);
+                            }
+                        }
+                        throw new IllegalStateException("Missing ingredient '" + itemName + "' after " + completed + " crafts.");
+                    }
+                }
+            }
+            AutoCrafter.takeResult(client, 0);
+            completed++;
+        }
+
+        JsonObject res = new JsonObject();
+        res.addProperty("craftedBatches", completed);
+        res.add("state", GameStateCollector.collect(client));
+        return res.toString();
+    }
+
+    private String toolPlaceBlock(Minecraft client, JsonObject args) {
+        if (client.player == null || client.level == null || client.gameMode == null) {
+            throw new IllegalStateException("Player is not in game.");
+        }
+        String itemName = getStringArg(args, "item");
+        if (itemName == null || itemName.isBlank()) {
+            throw new IllegalArgumentException("Missing 'item'.");
+        }
+        Item targetItem = AutoCrafter.getItem(itemName.trim());
+        if (targetItem == null) {
+            throw new IllegalArgumentException("Unknown item: " + itemName);
+        }
+
+        // Find in hotbar (0..8) or swap from main inventory (9..35)
+        int hotbarSlot = -1;
+        for (int i = 0; i < 9; i++) {
+            if (client.player.getInventory().getItem(i).is(targetItem)) {
+                hotbarSlot = i;
+                break;
+            }
+        }
+        if (hotbarSlot == -1) {
+            int invSlot = -1;
+            for (int i = 9; i < 36; i++) {
+                if (client.player.getInventory().getItem(i).is(targetItem)) {
+                    invSlot = i;
+                    break;
+                }
+            }
+            if (invSlot == -1) {
+                throw new IllegalStateException("Item not found in inventory: " + itemName);
+            }
+            int targetHotbar = 8;
+            for (int i = 0; i < 9; i++) {
+                if (client.player.getInventory().getItem(i).isEmpty()) {
+                    targetHotbar = i;
+                    break;
+                }
+            }
+            AutoCrafter.clickSlot(client, client.player.inventoryMenu.containerId, invSlot, targetHotbar, ContainerInput.SWAP);
+            hotbarSlot = targetHotbar;
+        }
+
+        // Find an air block directly above a solid block within radius 3
+        BlockPos playerPos = client.player.blockPosition();
+        BlockPos supportPos = null;
+        for (int r = 1; r <= 3 && supportPos == null; r++) {
+            for (int dx = -r; dx <= r && supportPos == null; dx++) {
+                for (int dz = -r; dz <= r && supportPos == null; dz++) {
+                    for (int dy = -1; dy <= 1; dy++) {
+                        BlockPos candidate = playerPos.offset(dx, dy, dz);
+                        if (candidate.equals(playerPos) || candidate.equals(playerPos.above())) continue;
+                        BlockPos below = candidate.below();
+                        if (client.level.getBlockState(candidate).canBeReplaced()
+                                && client.level.getBlockState(below).isSolid()) {
+                            supportPos = below;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if (supportPos == null) {
+            throw new IllegalStateException("No suitable placement spot found near player.");
+        }
+
+        client.player.getInventory().setSelectedSlot(hotbarSlot);
+        Vec3 hitVec = new Vec3(supportPos.getX() + 0.5, supportPos.getY() + 1.0, supportPos.getZ() + 0.5);
+        RotationManager.rotateTowards(client, hitVec, 180.0);
+        BlockHitResult hit = new BlockHitResult(hitVec, Direction.UP, supportPos, false);
+        client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, hit);
+        AutoCrafter.swingMainHand(client);
+        return "Placed " + itemName + " at " + supportPos.above().toShortString();
+    }
+
+    private String toolEquipItem(Minecraft client, JsonObject args) {
+        if (client.player == null || client.gameMode == null) {
+            throw new IllegalStateException("Player is not in game.");
+        }
+        String itemName = getStringArg(args, "item");
+        String slot = getStringArg(args, "slot");
+        if (itemName == null || itemName.isBlank()) {
+            throw new IllegalArgumentException("Missing 'item'.");
+        }
+        if (slot == null || slot.isBlank()) slot = "mainhand";
+
+        Item targetItem = AutoCrafter.getItem(itemName.trim());
+        if (targetItem == null) {
+            throw new IllegalArgumentException("Unknown item: " + itemName);
+        }
+
+        int foundInvIdx = -1;
+        for (int i = 0; i < 36; i++) {
+            if (client.player.getInventory().getItem(i).is(targetItem)) {
+                foundInvIdx = i;
+                break;
+            }
+        }
+        if (foundInvIdx == -1) {
+            throw new IllegalStateException("Item not found in inventory: " + itemName);
+        }
+
+        int syncId = client.player.inventoryMenu.containerId;
+        int menuSlot = (foundInvIdx < 9) ? (36 + foundInvIdx) : foundInvIdx;
+
+        switch (slot.toLowerCase()) {
+            case "mainhand" -> {
+                if (foundInvIdx < 9) {
+                    client.player.getInventory().setSelectedSlot(foundInvIdx);
+                } else {
+                    int activeHotbar = client.player.getInventory().getSelectedSlot();
+                    AutoCrafter.clickSlot(client, syncId, menuSlot, activeHotbar, ContainerInput.SWAP);
+                }
+                return "Equipped " + itemName + " in mainhand.";
+            }
+            case "offhand" -> {
+                AutoCrafter.clickSlot(client, syncId, menuSlot, 40, ContainerInput.SWAP);
+                return "Equipped " + itemName + " in offhand.";
+            }
+            case "armor" -> {
+                AutoCrafter.clickSlot(client, syncId, menuSlot, 0, ContainerInput.QUICK_MOVE);
+                return "Equipped armor item: " + itemName;
+            }
+            default -> throw new IllegalArgumentException("slot must be 'mainhand', 'offhand', or 'armor'.");
+        }
+    }
+
     private String toolSetCombatDefense(Minecraft client, JsonObject args) {
         BaritonePlusConfig cfg = BaritonePlusConfig.get();
         if (!cfg.aiBridge.allowCombatOverride) {
@@ -342,7 +518,7 @@ public class AiAgentManager {
             cfg.combat.autoShield = args.get("auto_shield").getAsBoolean();
         }
         if (args.has("auto_eat") && !args.get("auto_eat").isJsonNull()) {
-            cfg.combat.autoEat = args.get("auto_eat").getAsBoolean();
+            cfg.autoEat.enabled = args.get("auto_eat").getAsBoolean();
         }
         if (args.has("target_hostiles") && !args.get("target_hostiles").isJsonNull()) {
             cfg.combat.targetHostiles = args.get("target_hostiles").getAsBoolean();
@@ -351,8 +527,8 @@ public class AiAgentManager {
             cfg.combat.targetPlayers = args.get("target_players").getAsBoolean();
         }
         BaritonePlusConfig.save();
-        AutoCrafter.log(client, "§d[AI] §7Combat/Defense updated: enabled=" + cfg.combat.enabled
-                + ", autoShield=" + cfg.combat.autoShield + ", autoEat=" + cfg.combat.autoEat);
+        AutoCrafter.log(client, "§d[AI] §7Defense updated: combat=" + cfg.combat.enabled
+                + ", autoShield=" + cfg.combat.autoShield + ", autoEat=" + cfg.autoEat.enabled);
         return "Combat/Defense config updated and saved.";
     }
 
@@ -500,34 +676,53 @@ public class AiAgentManager {
                 "Reads current player position, health, inventory, nearby entities, recent chat, scoreboard, and open GUI slots.",
                 new JsonObject(), List.of()));
 
-        JsonObject craftProps = new JsonObject();
-        craftProps.add("item", prop("string", "Minecraft item name, e.g. iron_pickaxe or oak_planks"));
-        craftProps.add("amount", prop("integer", "Amount to craft (1-64)"));
-        tools.add(tool("craft_item",
-                "Starts Baritone+ autonomous crafting and waits until it finishes, then returns the updated game state.",
-                craftProps, List.of("item")));
-
         JsonObject baritoneProps = new JsonObject();
         baritoneProps.add("command", prop("string", "Baritone command without #, e.g. 'mine 8 diamond_ore', 'goto 100 64 -200', 'follow players', 'explore', 'stop'"));
         tools.add(tool("baritone_command",
                 "Executes a Baritone command and waits until it finishes (except stop/pause), then returns the updated game state.",
                 baritoneProps, List.of("command")));
 
+        JsonObject gridProps = new JsonObject();
+        JsonObject patternProp = new JsonObject();
+        patternProp.addProperty("type", "array");
+        JsonObject itemType = new JsonObject();
+        itemType.addProperty("type", "string");
+        patternProp.add("items", itemType);
+        patternProp.addProperty("description", "4 strings (2x2 inventory grid) or 9 strings (3x3 crafting table grid), row-major, '' for empty, e.g. ['oak_planks','','oak_planks','']");
+        gridProps.add("pattern", patternProp);
+        gridProps.add("count", prop("integer", "Number of craft batches to execute (1-64, default 1)"));
+        tools.add(tool("craft_grid",
+                "Crafts any 2x2 or 3x3 recipe directly in the crafting grid and returns the updated game state.",
+                gridProps, List.of("pattern")));
+
+        JsonObject placeProps = new JsonObject();
+        placeProps.add("item", prop("string", "Block item name in inventory, e.g. 'crafting_table', 'furnace', 'chest'"));
+        tools.add(tool("place_block",
+                "Places a block from inventory onto a nearby solid surface.",
+                placeProps, List.of("item")));
+
+        JsonObject equipProps = new JsonObject();
+        equipProps.add("item", prop("string", "Item name in inventory, e.g. 'iron_pickaxe', 'shield', 'iron_chestplate'"));
+        equipProps.add("slot", prop("string", "'mainhand', 'offhand', or 'armor'"));
+        tools.add(tool("equip_item",
+                "Equips an item from inventory to mainhand, offhand, or armor slot.",
+                equipProps, List.of("item")));
+
         JsonObject combatProps = new JsonObject();
-        combatProps.add("enabled", prop("boolean", "Enable/disable built-in Meteor-inspired combat & defense controller"));
+        combatProps.add("enabled", prop("boolean", "Enable/disable melee combat attacker"));
         combatProps.add("auto_shield", prop("boolean", "Auto-block incoming arrows/creepers/melee with offhand shield"));
-        combatProps.add("auto_eat", prop("boolean", "Auto-eat food from hotbar when hungry or low HP"));
+        combatProps.add("auto_eat", prop("boolean", "Enable/disable standalone Auto-Eat"));
         combatProps.add("target_hostiles", prop("boolean", "Attack nearby hostile monsters"));
         combatProps.add("target_players", prop("boolean", "Attack nearby players"));
         tools.add(tool("set_combat_defense",
-                "Configures the persistent combat & defense controller (stays active between tasks).",
+                "Toggles persistent combat, Auto-Shield, and Auto-Eat settings (remain active between tasks).",
                 combatProps, List.of()));
 
         JsonObject interactProps = new JsonObject();
         interactProps.add("target_type", prop("string", "'block' or 'entity'"));
         interactProps.add("query", prop("string", "Partial block or entity name, e.g. 'chest', 'villager', 'crafting_table'"));
         tools.add(tool("interact_nearby",
-                "Right-clicks the nearest matching block or entity within 4.5 blocks (e.g. open chest or talk to NPC).",
+                "Right-clicks the nearest matching block or entity within 4.5 blocks (e.g. open crafting_table/furnace/chest or talk to NPC).",
                 interactProps, List.of("target_type", "query")));
 
         JsonObject guiProps = new JsonObject();
@@ -535,11 +730,11 @@ public class AiAgentManager {
         guiProps.add("button", prop("integer", "Mouse button (0=left, 1=right)"));
         guiProps.add("quick_move", prop("boolean", "True for shift-click quick move"));
         tools.add(tool("click_gui_slot",
-                "Clicks a slot in the currently open chest or server GUI menu.",
+                "Clicks a slot in the currently open chest, furnace, or server GUI menu.",
                 guiProps, List.of("slot")));
 
         tools.add(tool("close_gui",
-                "Closes the currently open chest or server GUI menu.",
+                "Closes the currently open chest, crafting table, or server GUI menu.",
                 new JsonObject(), List.of()));
 
         JsonObject chatProps = new JsonObject();

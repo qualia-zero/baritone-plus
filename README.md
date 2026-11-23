@@ -11,8 +11,8 @@ An advanced addon for [Baritone](https://github.com/cabaletta/baritone) adding a
 - **Task Scheduling & Management:** Tick-based action queues with graceful error recovery.
 - **Typed JSON Configuration & Presets:** Central `config/baritone-plus.json` with `VANILLA` and `STRICT` anti-cheat profiles and automatic migration from legacy beta config.
 - **Native Config & Control GUI + Unified `/bp` Commands:** Built-in client-side `/bp` commands with auto-completion and a lightweight native Vanilla screen (`Right Shift` or `/bp gui`) featuring a `Control` tab and a `Baritone` tab (common settings + live modified settings viewer/reset).
-- **Built-in Combat & Survival Defense:** Meteor-inspired tick-based `CombatController` and `RotationManager` with smooth turn-speed-limited aiming, attack cooldown respect, offhand `AutoShield`, and hotbar `AutoEat` (persisting continuously between tasks when enabled).
-- **Optional Embedded Gemini AI Orchestrator:** Disabled by default (`aiBridge.enabled = false`). When enabled with a `GEMINI_API_KEY` (or `/bp ai key <key>`), uses the Gemini `v1/interactions` REST API directly inside the mod JAR as a step-by-step autonomous orchestrator: waits for long-running Baritone/crafting tasks to finish, inspects updated live state (inventory, nearby entities, recent chat, scoreboard, open GUI slots), replies in the user's language, and decides the next action (`get_game_state`, `craft_item`, `baritone_command`, `set_combat_defense`, `interact_nearby`, `click_gui_slot`, `close_gui`, `send_chat`, `stop_all`).
+- **Built-in Combat & Self-Preservation (Independent of AI):** Meteor-grade `AutoEatController` (food priority, threshold modes, blacklist, inventory search, Baritone pause/resume), independent `AutoShield`, and `CombatController` with `RotationManager` — always active on their own and toggleable via GUI, `/bp`, or AI.
+- **Optional Embedded Gemini Atomic Orchestrator:** Disabled by default (`aiBridge.enabled = false`). When enabled with a `GEMINI_API_KEY` (or `/bp ai key <key>`), uses the Gemini `v1/interactions` REST API directly inside the mod JAR as a pure atomic step-by-step orchestrator (no hardcoded `/craft` shortcut): plans and verifies every step from live game state using `get_game_state`, `baritone_command`, `craft_grid`, `place_block`, `equip_item`, `interact_nearby`, `click_gui_slot`, `close_gui`, `set_combat_defense`, `send_chat`, and `stop_all`.
 
 ---
 
@@ -34,7 +34,9 @@ Baritone+ registers all client-side commands under the unified `/bp` namespace w
 | `/bp stop` | Cancels the current Baritone+ task queue and stops Baritone. |
 | `/bp config <key> [value]` | Reads or updates any setting in `config/baritone-plus.json` live (e.g., `general.betaFeatures`). |
 | `/bp profile <vanilla\|strict>` | Applies a preset anti-cheat profile (`VANILLA` or `STRICT`). |
-| `/bp combat <on\|off>` | Toggles the combat controller configuration flag. |
+| `/bp combat <on\|off>` | Toggles the combat attacker. |
+| `/bp autoeat <on\|off>` | Toggles standalone Meteor-grade Auto-Eat. |
+| `/bp shield <on\|off>` | Toggles standalone offhand Auto-Shield. |
 | `/bp ai <on\|off\|status>` | Toggles or inspects the optional embedded Gemini AI agent (disabled by default). |
 | `/bp ai ask <prompt>` | Sends a task/prompt to the Gemini agent with live game state and function calling. |
 | `/bp ai key <apiKey>` | Saves your Gemini API key locally to `config/baritone-plus-secrets.txt` (or use `GEMINI_API_KEY` env var). |

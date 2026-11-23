@@ -1,6 +1,7 @@
 package baritone.plus;
 
 import baritone.plus.ai.AiAgentManager;
+import baritone.plus.combat.AutoEatController;
 import baritone.plus.combat.CombatController;
 import baritone.plus.command.BpCommand;
 import baritone.plus.config.BaritonePlusConfig;
@@ -21,6 +22,7 @@ public class BaritonePlusClient implements ClientModInitializer {
 
     public static final Logger LOGGER = LoggerFactory.getLogger("baritone-plus");
     public static final TaskManager TASK_MANAGER = new TaskManager();
+    public static final AutoEatController AUTO_EAT = new AutoEatController();
     public static final CombatController COMBAT_CONTROLLER = new CombatController();
     public static final AiAgentManager AI_AGENT = new AiAgentManager();
 
@@ -63,6 +65,7 @@ public class BaritonePlusClient implements ClientModInitializer {
                     client.gui.setScreen(new BaritonePlusScreen(null));
                 }
             }
+            AUTO_EAT.tick(client);
             COMBAT_CONTROLLER.tick(client);
             TASK_MANAGER.tick(client);
             AI_AGENT.tick(client);

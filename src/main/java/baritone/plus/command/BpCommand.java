@@ -61,9 +61,6 @@ public class BpCommand {
         map.put("combat.autoShield", new ConfigEntry(
                 () -> String.valueOf(BaritonePlusConfig.get().combat.autoShield),
                 v -> BaritonePlusConfig.get().combat.autoShield = parseBool(v)));
-        map.put("combat.autoEat", new ConfigEntry(
-                () -> String.valueOf(BaritonePlusConfig.get().combat.autoEat),
-                v -> BaritonePlusConfig.get().combat.autoEat = parseBool(v)));
         map.put("combat.fleeHealthThreshold", new ConfigEntry(
                 () -> String.valueOf(BaritonePlusConfig.get().combat.fleeHealthThreshold),
                 v -> BaritonePlusConfig.get().combat.fleeHealthThreshold = parseDouble(v, 0.0, 20.0)));
@@ -86,6 +83,34 @@ public class BpCommand {
         map.put("combat.targetPlayers", new ConfigEntry(
                 () -> String.valueOf(BaritonePlusConfig.get().combat.targetPlayers),
                 v -> BaritonePlusConfig.get().combat.targetPlayers = parseBool(v)));
+
+        // AutoEat
+        map.put("autoeat.enabled", new ConfigEntry(
+                () -> String.valueOf(BaritonePlusConfig.get().autoEat.enabled),
+                v -> BaritonePlusConfig.get().autoEat.enabled = parseBool(v)));
+        map.put("autoeat.thresholdMode", new ConfigEntry(
+                () -> BaritonePlusConfig.get().autoEat.thresholdMode.name(),
+                v -> BaritonePlusConfig.get().autoEat.thresholdMode =
+                        BaritonePlusConfig.ThresholdMode.valueOf(v.toUpperCase())));
+        map.put("autoeat.healthThreshold", new ConfigEntry(
+                () -> String.valueOf(BaritonePlusConfig.get().autoEat.healthThreshold),
+                v -> BaritonePlusConfig.get().autoEat.healthThreshold = parseDouble(v, 1.0, 19.0)));
+        map.put("autoeat.hungerThreshold", new ConfigEntry(
+                () -> String.valueOf(BaritonePlusConfig.get().autoEat.hungerThreshold),
+                v -> BaritonePlusConfig.get().autoEat.hungerThreshold = parseInt(v, 1, 19)));
+        map.put("autoeat.priority", new ConfigEntry(
+                () -> BaritonePlusConfig.get().autoEat.priority.name(),
+                v -> BaritonePlusConfig.get().autoEat.priority =
+                        BaritonePlusConfig.FoodPriority.valueOf(v.toUpperCase())));
+        map.put("autoeat.pauseBaritone", new ConfigEntry(
+                () -> String.valueOf(BaritonePlusConfig.get().autoEat.pauseBaritone),
+                v -> BaritonePlusConfig.get().autoEat.pauseBaritone = parseBool(v)));
+        map.put("autoeat.pauseCombat", new ConfigEntry(
+                () -> String.valueOf(BaritonePlusConfig.get().autoEat.pauseCombat),
+                v -> BaritonePlusConfig.get().autoEat.pauseCombat = parseBool(v)));
+        map.put("autoeat.searchInventory", new ConfigEntry(
+                () -> String.valueOf(BaritonePlusConfig.get().autoEat.searchInventory),
+                v -> BaritonePlusConfig.get().autoEat.searchInventory = parseBool(v)));
 
         // Container & Chat
         map.put("container.clickDelayTicks", new ConfigEntry(
@@ -226,6 +251,36 @@ public class BpCommand {
                                     BaritonePlusConfig.get().combat.enabled = false;
                                     BaritonePlusConfig.save();
                                     send(ctx.getSource(), "§cCombat controller disabled.");
+                                    return 1;
+                                })))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("autoeat")
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("on")
+                                .executes(ctx -> {
+                                    BaritonePlusConfig.get().autoEat.enabled = true;
+                                    BaritonePlusConfig.save();
+                                    send(ctx.getSource(), "§aAuto-Eat enabled.");
+                                    return 1;
+                                }))
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("off")
+                                .executes(ctx -> {
+                                    BaritonePlusConfig.get().autoEat.enabled = false;
+                                    BaritonePlusConfig.save();
+                                    send(ctx.getSource(), "§cAuto-Eat disabled.");
+                                    return 1;
+                                })))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("shield")
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("on")
+                                .executes(ctx -> {
+                                    BaritonePlusConfig.get().combat.autoShield = true;
+                                    BaritonePlusConfig.save();
+                                    send(ctx.getSource(), "§aAuto-Shield enabled.");
+                                    return 1;
+                                }))
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("off")
+                                .executes(ctx -> {
+                                    BaritonePlusConfig.get().combat.autoShield = false;
+                                    BaritonePlusConfig.save();
+                                    send(ctx.getSource(), "§cAuto-Shield disabled.");
                                     return 1;
                                 })))
                 .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("ai")

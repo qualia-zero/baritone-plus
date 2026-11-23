@@ -75,6 +75,9 @@ public class BaritonePlusScreen extends Screen {
     private boolean showModifiedBaritoneOnly = false;
     private int modifiedPage = 0;
 
+    // Persisted Combat tab sub-view (Combat & Shield vs Auto-Eat)
+    private boolean showAutoEatSubTab = false;
+
     private static final int ROW_HEIGHT = 24;
     private static final int FULL_WIDTH = 260;
     private static final int CONTROL_WIDTH = 360;
@@ -506,34 +509,90 @@ public class BaritonePlusScreen extends Screen {
     }
 
     private void buildCombatTab(int centerX, int y, BaritonePlusConfig cfg) {
-        int colWidth = 190;
-        int colGap = 8;
-        int leftX = centerX - colWidth - colGap / 2;
-        int rightX = centerX + colGap / 2;
+        int subWidth = 190;
+        int subGap = 8;
+        int leftX = centerX - subWidth - subGap / 2;
+        int rightX = centerX + subGap / 2;
 
+        String combatSubLabel = !showAutoEatSubTab ? "§b[Combat & Shield]" : "Combat & Shield";
+        String eatSubLabel = showAutoEatSubTab ? "§b[Auto-Eat]" : "Auto-Eat";
+
+        this.addRenderableWidget(Button.builder(Component.literal(combatSubLabel), btn -> {
+            showAutoEatSubTab = false;
+            this.rebuildWidgets();
+        }).bounds(leftX, y, subWidth, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal(eatSubLabel), btn -> {
+            showAutoEatSubTab = true;
+            this.rebuildWidgets();
+        }).bounds(rightX, y, subWidth, 20).build());
+        y += ROW_HEIGHT + 2;
+
+        if (showAutoEatSubTab) {
+            // Row 1
+            addToggleRow(leftX, y, subWidth, "Auto-Eat",
+                    () -> cfg.autoEat.enabled, val -> cfg.autoEat.enabled = val);
+            addActionRow(rightX, y, subWidth,
+                    "Mode: " + cfg.autoEat.thresholdMode.name(),
+                    () -> {
+                        var modes = BaritonePlusConfig.ThresholdMode.values();
+                        cfg.autoEat.thresholdMode = modes[(cfg.autoEat.thresholdMode.ordinal() + 1) % modes.length];
+                        BaritonePlusConfig.save();
+                        this.rebuildWidgets();
+                    });
+            y += ROW_HEIGHT;
+
+            // Row 2
+            addDoubleStepperRow(leftX, y, subWidth, "Health <=",
+                    () -> cfg.autoEat.healthThreshold, 1.0, 1.0, 19.0,
+                    val -> cfg.autoEat.healthThreshold = val);
+            addIntStepperRow(rightX, y, subWidth, "Hunger <=",
+                    () -> cfg.autoEat.hungerThreshold, 1, 1, 19,
+                    val -> cfg.autoEat.hungerThreshold = val);
+            y += ROW_HEIGHT;
+
+            // Row 3
+            addActionRow(leftX, y, subWidth,
+                    "Priority: " + cfg.autoEat.priority.name(),
+                    () -> {
+                        cfg.autoEat.priority =
+                                cfg.autoEat.priority == BaritonePlusConfig.FoodPriority.SATURATION
+                                        ? BaritonePlusConfig.FoodPriority.HUNGER
+                                        : BaritonePlusConfig.FoodPriority.SATURATION;
+                        BaritonePlusConfig.save();
+                        this.rebuildWidgets();
+                    });
+            addToggleRow(rightX, y, subWidth, "Search Inventory",
+                    () -> cfg.autoEat.searchInventory, val -> cfg.autoEat.searchInventory = val);
+            y += ROW_HEIGHT;
+
+            // Row 4
+            addToggleRow(leftX, y, subWidth, "Pause Baritone",
+                    () -> cfg.autoEat.pauseBaritone, val -> cfg.autoEat.pauseBaritone = val);
+            addToggleRow(rightX, y, subWidth, "Pause Combat",
+                    () -> cfg.autoEat.pauseCombat, val -> cfg.autoEat.pauseCombat = val);
+            return;
+        }
+
+        // Combat & Shield sub-tab
         // Row 1
-        addToggleRow(leftX, y, colWidth, "Combat Controller",
+        addToggleRow(leftX, y, subWidth, "Combat Attacker",
                 () -> cfg.combat.enabled, val -> cfg.combat.enabled = val);
-        addToggleRow(rightX, y, colWidth, "Auto Shield",
+        addToggleRow(rightX, y, subWidth, "Auto Shield",
                 () -> cfg.combat.autoShield, val -> cfg.combat.autoShield = val);
         y += ROW_HEIGHT;
 
         // Row 2
-        addToggleRow(leftX, y, colWidth, "Auto Eat",
-                () -> cfg.combat.autoEat, val -> cfg.combat.autoEat = val);
-        addToggleRow(rightX, y, colWidth, "Attack Cooldown",
+        addToggleRow(leftX, y, subWidth, "Attack Cooldown",
                 () -> cfg.combat.respectAttackCooldown, val -> cfg.combat.respectAttackCooldown = val);
+        addToggleRow(rightX, y, subWidth, "Target Hostiles",
+                () -> cfg.combat.targetHostiles, val -> cfg.combat.targetHostiles = val);
         y += ROW_HEIGHT;
 
         // Row 3
-        addToggleRow(leftX, y, colWidth, "Target Hostiles",
-                () -> cfg.combat.targetHostiles, val -> cfg.combat.targetHostiles = val);
-        addToggleRow(rightX, y, colWidth, "Target Players",
+        addToggleRow(leftX, y, subWidth, "Target Players",
                 () -> cfg.combat.targetPlayers, val -> cfg.combat.targetPlayers = val);
-        y += ROW_HEIGHT;
-
-        // Row 4
-        addActionRow(leftX, y, colWidth,
+        addActionRow(rightX, y, subWidth,
                 "Rotation: " + cfg.combat.rotationMode.name(),
                 () -> {
                     cfg.combat.rotationMode =
@@ -543,16 +602,19 @@ public class BaritonePlusScreen extends Screen {
                     BaritonePlusConfig.save();
                     this.rebuildWidgets();
                 });
-        addDoubleStepperRow(rightX, y, colWidth, "Range",
+        y += ROW_HEIGHT;
+
+        // Row 4
+        addDoubleStepperRow(leftX, y, subWidth, "Range",
                 () -> cfg.combat.attackRange, 0.1, 2.0, 4.5,
                 val -> cfg.combat.attackRange = val);
+        addDoubleStepperRow(rightX, y, subWidth, "Turn Speed",
+                () -> cfg.combat.maxTurnSpeedDegPerTick, 5.0, 10.0, 180.0,
+                val -> cfg.combat.maxTurnSpeedDegPerTick = val);
         y += ROW_HEIGHT;
 
         // Row 5
-        addDoubleStepperRow(leftX, y, colWidth, "Turn Speed",
-                () -> cfg.combat.maxTurnSpeedDegPerTick, 5.0, 10.0, 180.0,
-                val -> cfg.combat.maxTurnSpeedDegPerTick = val);
-        addDoubleStepperRow(rightX, y, colWidth, "Flee HP",
+        addDoubleStepperRow(leftX, y, subWidth, "Flee HP",
                 () -> cfg.combat.fleeHealthThreshold, 1.0, 0.0, 18.0,
                 val -> cfg.combat.fleeHealthThreshold = val);
     }

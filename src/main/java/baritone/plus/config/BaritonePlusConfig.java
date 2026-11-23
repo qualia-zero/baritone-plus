@@ -34,8 +34,21 @@ public class BaritonePlusConfig {
         SERVER_SILENT
     }
 
+    public enum FoodPriority {
+        SATURATION,
+        HUNGER
+    }
+
+    public enum ThresholdMode {
+        ANY,
+        BOTH,
+        HEALTH,
+        HUNGER
+    }
+
     public GeneralConfig general = new GeneralConfig();
     public CombatConfig combat = new CombatConfig();
+    public AutoEatConfig autoEat = new AutoEatConfig();
     public ContainerConfig container = new ContainerConfig();
     public ChatConfig chat = new ChatConfig();
     public AiBridgeConfig aiBridge = new AiBridgeConfig();
@@ -49,7 +62,6 @@ public class BaritonePlusConfig {
     public static class CombatConfig {
         public boolean enabled = false;
         public boolean autoShield = true;
-        public boolean autoEat = true;
         public double fleeHealthThreshold = 6.0;
         public double attackRange = 3.0;
         public RotationMode rotationMode = RotationMode.SERVER_SILENT;
@@ -57,6 +69,22 @@ public class BaritonePlusConfig {
         public boolean respectAttackCooldown = true;
         public boolean targetHostiles = true;
         public boolean targetPlayers = false;
+    }
+
+    public static class AutoEatConfig {
+        public boolean enabled = true;
+        public ThresholdMode thresholdMode = ThresholdMode.ANY;
+        public double healthThreshold = 10.0;
+        public int hungerThreshold = 16;
+        public FoodPriority priority = FoodPriority.SATURATION;
+        public boolean pauseBaritone = true;
+        public boolean pauseCombat = true;
+        public boolean searchInventory = false;
+        public List<String> blacklist = new ArrayList<>(List.of(
+                "enchanted_golden_apple", "golden_apple", "chorus_fruit",
+                "poisonous_potato", "pufferfish", "chicken",
+                "rotten_flesh", "spider_eye", "suspicious_stew"
+        ));
     }
 
     public static class ContainerConfig {
@@ -150,6 +178,17 @@ public class BaritonePlusConfig {
 
         if (combat == null) combat = new CombatConfig();
         if (combat.rotationMode == null) combat.rotationMode = RotationMode.SERVER_SILENT;
+
+        if (autoEat == null) autoEat = new AutoEatConfig();
+        if (autoEat.thresholdMode == null) autoEat.thresholdMode = ThresholdMode.ANY;
+        if (autoEat.priority == null) autoEat.priority = FoodPriority.SATURATION;
+        if (autoEat.blacklist == null) {
+            autoEat.blacklist = new ArrayList<>(List.of(
+                    "enchanted_golden_apple", "golden_apple", "chorus_fruit",
+                    "poisonous_potato", "pufferfish", "chicken",
+                    "rotten_flesh", "spider_eye", "suspicious_stew"
+            ));
+        }
 
         if (container == null) container = new ContainerConfig();
         if (container.protectedItems == null) {

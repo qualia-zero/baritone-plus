@@ -64,10 +64,12 @@ public class GameStateCollector {
 
         // Combat & Defense state
         BaritonePlusConfig.CombatConfig combatCfg = BaritonePlusConfig.get().combat;
+        BaritonePlusConfig.AutoEatConfig eatCfg = BaritonePlusConfig.get().autoEat;
         JsonObject combatJson = new JsonObject();
-        combatJson.addProperty("enabled", combatCfg.enabled);
+        combatJson.addProperty("combatEnabled", combatCfg.enabled);
         combatJson.addProperty("autoShield", combatCfg.autoShield);
-        combatJson.addProperty("autoEat", combatCfg.autoEat);
+        combatJson.addProperty("autoEatEnabled", eatCfg.enabled);
+        combatJson.addProperty("isEating", BaritonePlusClient.AUTO_EAT.isEating());
         combatJson.addProperty("inDanger", BaritonePlusClient.COMBAT_CONTROLLER.isInDanger(client));
         root.add("combat", combatJson);
 
