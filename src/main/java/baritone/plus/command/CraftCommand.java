@@ -23,9 +23,9 @@ public class CraftCommand {
     public static void register(CommandDispatcher<FabricClientCommandSource> dispatcher) {
         dispatcher.register(LiteralArgumentBuilder.<FabricClientCommandSource>literal("allowBaritonePlusBetaFeatures")
                 .executes(context -> {
-                    betaFeaturesEnabled = !betaFeaturesEnabled;
+                    betaFeaturesEnabled = !baritone.plus.util.BetaConfig.isBetaEnabled();
                     baritone.plus.util.BetaConfig.setBetaEnabled(betaFeaturesEnabled);
-                    if (betaFeaturesEnabled) {
+                    if (baritone.plus.util.BetaConfig.isBetaEnabled()) {
                         context.getSource().sendFeedback(Component.literal("§b[Baritone+] §7Beta features have been enabled."));
                     } else {
                         context.getSource().sendFeedback(Component.literal("§b[Baritone+] §7Beta features have been disabled."));
@@ -50,7 +50,7 @@ public class CraftCommand {
                     builder.suggest(s);
                 }
             }
-            if (betaFeaturesEnabled) {
+            if (baritone.plus.util.BetaConfig.isBetaEnabled()) {
                 if ("nether_portal".startsWith(remaining)) {
                     builder.suggest("nether_portal");
                 }

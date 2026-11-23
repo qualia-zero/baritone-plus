@@ -53,3 +53,7 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
+# Local Reference Repositories (NEVER commit)
+references/
+orchestrator/.env
+
