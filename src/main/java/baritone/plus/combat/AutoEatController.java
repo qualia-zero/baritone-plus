@@ -101,10 +101,6 @@ public class AutoEatController {
             client.player.getInventory().setSelectedSlot(activeSlot);
         }
         client.options.keyUse.setDown(true);
-        if (!client.player.isUsingItem()) {
-            InteractionHand hand = (activeSlot == OFFHAND_SLOT) ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-            client.gameMode.useItem(client.player, hand);
-        }
         eating = true;
     }
 

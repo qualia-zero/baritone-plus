@@ -249,7 +249,6 @@ public class BaritonePlusScreen extends Screen {
         this.addRenderableWidget(Button.builder(Component.literal("§cStop All"), btn -> {
             BaritonePlusClient.AI_AGENT.stop();
             BaritonePlusClient.TASK_MANAGER.cancelTask();
-            BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute("stop");
             if (this.minecraft != null) {
                 AutoCrafter.log(this.minecraft, "Stopped all tasks, AI, and Baritone.");
             }

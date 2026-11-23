@@ -1,5 +1,7 @@
 package baritone.plus.config;
 
+import baritone.api.BaritoneAPI;
+import baritone.api.utils.SettingsUtil;
 import baritone.plus.BaritonePlusClient;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -167,16 +169,23 @@ public class BaritonePlusConfig {
             case VANILLA -> {
                 combat.rotationMode = RotationMode.SERVER_SILENT;
                 combat.maxTurnSpeedDegPerTick = 90.0;
-                combat.attackRange = 3.0;
+                combat.attackRange = 4.0;
                 container.clickDelayTicks = 1;
             }
             case STRICT -> {
                 combat.rotationMode = RotationMode.SERVER_SILENT;
                 combat.maxTurnSpeedDegPerTick = 30.0;
-                combat.attackRange = 2.85;
+                combat.attackRange = 3.0;
                 combat.respectAttackCooldown = true;
                 container.clickDelayTicks = 3;
             }
+        }
+        try {
+            var settings = BaritoneAPI.getSettings();
+            settings.antiCheatCompatibility.value = (profile == AntiCheatProfile.STRICT);
+            SettingsUtil.save(settings);
+        } catch (Exception ignored) {
+            // Baritone may not be initialized in unit/early contexts
         }
         save();
     }

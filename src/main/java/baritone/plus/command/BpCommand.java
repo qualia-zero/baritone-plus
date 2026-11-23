@@ -225,7 +225,6 @@ public class BpCommand {
                         .executes(ctx -> {
                             BaritonePlusClient.AI_AGENT.stop();
                             BaritonePlusClient.TASK_MANAGER.cancelTask();
-                            BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute("stop");
                             send(ctx.getSource(), "§7Stopped all Baritone+ tasks, AI, and Baritone.");
                             return 1;
                         }))

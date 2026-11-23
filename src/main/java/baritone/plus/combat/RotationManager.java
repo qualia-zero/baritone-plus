@@ -40,6 +40,15 @@ public class RotationManager {
         float stepYaw = Mth.clamp(deltaYaw, -maxStep, maxStep);
         float stepPitch = Mth.clamp(deltaPitch, -maxStep, maxStep);
 
+        if (client.options != null) {
+            double sens = client.options.sensitivity().get() * 0.6 + 0.2;
+            double gcd = sens * sens * sens * 1.2;
+            if (gcd > 1e-6) {
+                stepYaw = (float) (Math.round(stepYaw / gcd) * gcd);
+                stepPitch = (float) (Math.round(stepPitch / gcd) * gcd);
+            }
+        }
+
         client.player.setYRot(currentYaw + stepYaw);
         client.player.setXRot(Mth.clamp(currentPitch + stepPitch, -90.0f, 90.0f));
 

@@ -12,6 +12,7 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.EntityHitResult;
 
 /**
  * Built-in Meteor-inspired combat and shield defense controller.
@@ -138,6 +139,10 @@ public class CombatController {
         );
 
         if (!aimed) {
+            return;
+        }
+
+        if (!(client.hitResult instanceof EntityHitResult ehr && ehr.getEntity() == bestTarget)) {
             return;
         }
 

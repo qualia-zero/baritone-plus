@@ -46,8 +46,18 @@ public class TaskManager {
 
     private void stopBaritoneAndReleaseKeys(Minecraft client, IBaritone baritone) {
         if (baritone != null) {
-            baritone.getCommandManager().execute("stop");
-            baritone.getPathingBehavior().cancelEverything();
+            boolean baritoneActive = baritone.getPathingBehavior().isPathing()
+                    || baritone.getMineProcess().isActive()
+                    || baritone.getGetToBlockProcess().isActive()
+                    || baritone.getFollowProcess().isActive()
+                    || baritone.getCustomGoalProcess().isActive()
+                    || baritone.getBuilderProcess().isActive()
+                    || baritone.getExploreProcess().isActive()
+                    || baritone.getFarmProcess().isActive();
+            if (baritoneActive) {
+                baritone.getCommandManager().execute("stop");
+                baritone.getPathingBehavior().cancelEverything();
+            }
             baritone.getInputOverrideHandler().clearAllKeys();
         }
         if (client != null && client.gameMode != null) {

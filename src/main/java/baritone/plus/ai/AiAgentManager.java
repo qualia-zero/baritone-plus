@@ -177,13 +177,6 @@ public class AiAgentManager {
             tickWaitingAction(client);
         } else if (state == State.WAITING_CRAFT) {
             tickWaitingCraft(client);
-        } else if (state == State.WAITING_API && !isBaritoneBusy() && !BaritonePlusClient.AUTO_EAT.isEating()) {
-            if (client.options != null) {
-                client.options.keyAttack.setDown(false);
-            }
-            if (client.gameMode != null) {
-                client.gameMode.stopDestroyBlock();
-            }
         }
     }
 
@@ -209,7 +202,9 @@ public class AiAgentManager {
             return;
         }
 
-        stopBaritoneCleanly(client);
+        if ((danger || timedOut) && isBaritoneBusy()) {
+            stopBaritoneIfBusy();
+        }
 
         String status = danger ? "interrupted_low_hp" : (timedOut ? "timeout" : "completed");
         JsonObject resultPayload = new JsonObject();
@@ -371,7 +366,7 @@ public class AiAgentManager {
 
         if (resp.error() != null) {
             AutoCrafter.log(client, "§c[AI Error] " + resp.error());
-            stopBaritoneCleanly(client);
+            stopBaritoneIfBusy();
             clearRunState();
             return;
         }
@@ -387,14 +382,14 @@ public class AiAgentManager {
         List<GeminiClient.FunctionCall> calls = resp.functionCalls();
         int maxSteps = BaritonePlusConfig.get().aiBridge.maxStepsPerRequest;
         if (calls.isEmpty()) {
-            stopBaritoneCleanly(client);
+            stopBaritoneIfBusy();
             clearRunState();
             return;
         }
 
         if (stepsInCurrentRun >= maxSteps) {
             AutoCrafter.log(client, "§e[AI] Reached maxStepsPerRequest (" + maxSteps + ").");
-            stopBaritoneCleanly(client);
+            stopBaritoneIfBusy();
             clearRunState();
             return;
         }
@@ -489,7 +484,7 @@ public class AiAgentManager {
             throw new IllegalArgumentException("Missing 'slots' object (with 'grid_size' 2 or 3).");
         }
 
-        stopBaritoneCleanly(client);
+        stopBaritoneIfBusy();
 
         boolean is3x3 = (gridSize == 9);
         boolean isCraftingScreen = AutoCrafter.isCraftingScreenOpen(client);
@@ -568,25 +563,15 @@ public class AiAgentManager {
         return sb.toString();
     }
 
-    private void stopBaritoneCleanly(Minecraft client) {
+    private void stopBaritoneIfBusy() {
+        if (!isBaritoneBusy()) {
+            return;
+        }
         IBaritone baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
         if (baritone != null) {
             baritone.getCommandManager().execute("stop");
             baritone.getPathingBehavior().cancelEverything();
             baritone.getInputOverrideHandler().clearAllKeys();
-        }
-        if (client != null && client.gameMode != null) {
-            client.gameMode.stopDestroyBlock();
-        }
-        if (client != null && client.options != null) {
-            client.options.keyAttack.setDown(false);
-            client.options.keyUse.setDown(false);
-            client.options.keyUp.setDown(false);
-            client.options.keyDown.setDown(false);
-            client.options.keyLeft.setDown(false);
-            client.options.keyRight.setDown(false);
-            client.options.keyJump.setDown(false);
-            client.options.keyShift.setDown(false);
         }
     }
 
@@ -609,7 +594,7 @@ public class AiAgentManager {
                 case "send_chat" -> toolSendChat(client, fc.arguments());
                 case "stop_all" -> {
                     BaritonePlusClient.TASK_MANAGER.cancelTask();
-                    stopBaritoneCleanly(client);
+                    stopBaritoneIfBusy();
                     yield "Stopped all Baritone+ tasks and Baritone.";
                 }
                 default -> {
@@ -641,7 +626,7 @@ public class AiAgentManager {
         if (client.player == null || client.level == null || client.gameMode == null) {
             throw new IllegalStateException("Player is not in game.");
         }
-        stopBaritoneCleanly(client);
+        stopBaritoneIfBusy();
 
         String itemName = getStringArg(args, "item");
         if (itemName == null || itemName.isBlank()) {
@@ -717,7 +702,7 @@ public class AiAgentManager {
         if (client.player == null || client.gameMode == null) {
             throw new IllegalStateException("Player is not in game.");
         }
-        stopBaritoneCleanly(client);
+        stopBaritoneIfBusy();
 
         String itemName = getStringArg(args, "item");
         String slot = getStringArg(args, "slot");
@@ -800,7 +785,7 @@ public class AiAgentManager {
         if (client.player == null || client.level == null || client.gameMode == null) {
             throw new IllegalStateException("Player is not in game.");
         }
-        stopBaritoneCleanly(client);
+        stopBaritoneIfBusy();
 
         String targetType = getStringArg(args, "target_type");
         String query = getStringArg(args, "query");
@@ -877,7 +862,7 @@ public class AiAgentManager {
         if (client.player == null || client.player.containerMenu == null || client.gameMode == null) {
             throw new IllegalStateException("No open container menu.");
         }
-        stopBaritoneCleanly(client);
+        stopBaritoneIfBusy();
 
         int slot = args.get("slot").getAsInt();
         int button = args.has("button") ? args.get("button").getAsInt() : 0;
