@@ -16,12 +16,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -59,16 +63,20 @@ public class AiAgentManager {
                     + "2. ATOMIC ORCHESTRATION: You replace a fixed orchestrator. Plan and execute every step atomically using: "
                     + "baritone_command, craft_grid, place_block, interact_nearby, click_gui_slot, close_gui, "
                     + "equip_item, set_combat_defense, send_chat, and stop_all.\n"
-                    + "3. BARITONE BLOCK IDS: Baritone #mine requires valid Minecraft block IDs! "
+                    + "3. BARITONE NAVIGATION & BLOCK IDS: Baritone #mine requires valid Minecraft block IDs! "
                     + "To get cobblestone, mine 'stone deepslate' (NOT 'cobblestone'). "
                     + "To get wood logs, use concrete block IDs like 'oak_log birch_log spruce_log' (NOT 'log'). "
-                    + "For ores, include deepslate variants (e.g. 'iron_ore deepslate_iron_ore', 'diamond_ore deepslate_diamond_ore').\n"
-                    + "4. STEP-BY-STEP VERIFICATION: After every tool call, inspect the returned live game state "
+                    + "For ores, include deepslate variants (e.g. 'iron_ore deepslate_iron_ore', 'diamond_ore deepslate_diamond_ore'). "
+                    + "NEVER pass exact coordinates of a crafting_table, furnace, or chest to 'goto x y z' (Baritone will break it to stand there); "
+                    + "use 'goto crafting_table' or 'goto furnace' instead.\n"
+                    + "4. CLEANUP: After finishing crafting or smelting and moving on, pick up your crafting_table / furnace "
+                    + "(e.g. baritone_command('mine 1 crafting_table')) so you take them with you.\n"
+                    + "5. STEP-BY-STEP VERIFICATION: After every tool call, inspect the returned live game state "
                     + "(inventory, position, openScreen, nearbyEntities, recentChat, health, combat) before choosing "
                     + "the next step. Check recentChat for any Baritone errors and recover if needed.\n"
-                    + "5. PERSISTENT DEFENSE: Self-preservation (autoEat, autoShield, combat) runs independently of AI. "
+                    + "6. PERSISTENT DEFENSE: Self-preservation (autoEat, autoShield, combat) runs independently of AI. "
                     + "Keep defensive functions active between tasks unless the user explicitly asks to disable them.\n"
-                    + "6. OUTPUT: Keep chat messages concise. Only finish when the user's goal is complete or blocked.";
+                    + "7. OUTPUT: Keep chat messages concise. Only finish when the user's goal is complete or blocked.";
 
     private static final Map<String, String> DEEPSLATE_ORES = Map.of(
             "iron_ore", "deepslate_iron_ore",
@@ -231,6 +239,9 @@ public class AiAgentManager {
 
         if ((danger || timedOut) && isBaritoneBusy()) {
             stopBaritoneIfBusy();
+        }
+        if (client.gameMode != null && client.gameMode.isDestroying()) {
+            client.gameMode.stopDestroyBlock();
         }
 
         String status = danger ? "interrupted_low_hp" : (timedOut ? "timeout" : "completed");
@@ -567,18 +578,41 @@ public class AiAgentManager {
         if (cmd == null || cmd.isBlank()) {
             throw new IllegalArgumentException("Missing 'command'");
         }
-        String clean = sanitizeBaritoneCommand(cmd);
+        String clean = sanitizeBaritoneCommand(client, cmd);
         AutoCrafter.log(client, "§d[AI] §7Baritone: §f#" + clean);
         BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(clean);
         return "baritone_command #" + clean;
     }
 
-    private String sanitizeBaritoneCommand(String raw) {
+    private String sanitizeBaritoneCommand(Minecraft client, String raw) {
         String clean = raw.trim();
         if (clean.startsWith("#")) clean = clean.substring(1).trim();
 
         String[] tokens = clean.split("\\s+");
-        if (tokens.length == 0 || !tokens[0].equalsIgnoreCase("mine")) {
+        if (tokens.length == 0) {
+            return clean;
+        }
+
+        // Prevent Baritone from breaking utility blocks when AI passes their exact coordinates to 'goto x y z'
+        if (tokens[0].equalsIgnoreCase("goto") && tokens.length == 4 && client != null && client.level != null) {
+            try {
+                int gx = Integer.parseInt(tokens[1]);
+                int gy = Integer.parseInt(tokens[2]);
+                int gz = Integer.parseInt(tokens[3]);
+                BlockState targetState = client.level.getBlockState(new BlockPos(gx, gy, gz));
+                String blockId = BuiltInRegistries.BLOCK.getKey(targetState.getBlock()).getPath();
+                if (blockId.equals("crafting_table") || blockId.equals("furnace")
+                        || blockId.equals("blast_furnace") || blockId.equals("smoker")
+                        || blockId.equals("chest") || blockId.equals("trapped_chest")
+                        || blockId.equals("barrel")) {
+                    return "goto " + blockId;
+                }
+            } catch (NumberFormatException ignored) {
+                // Not integer coords, keep original command
+            }
+        }
+
+        if (!tokens[0].equalsIgnoreCase("mine")) {
             return clean;
         }
 
@@ -709,7 +743,10 @@ public class AiAgentManager {
         }
 
         BlockPos playerPos = client.player.blockPosition();
+        Vec3 eyePos = client.player.getEyePosition();
         BlockPos supportPos = null;
+        Vec3 bestHitVec = null;
+
         for (int r = 1; r <= 3 && supportPos == null; r++) {
             for (int dx = -r; dx <= r && supportPos == null; dx++) {
                 for (int dz = -r; dz <= r && supportPos == null; dz++) {
@@ -717,24 +754,42 @@ public class AiAgentManager {
                         BlockPos candidate = playerPos.offset(dx, dy, dz);
                         if (candidate.equals(playerPos) || candidate.equals(playerPos.above())) continue;
                         BlockPos below = candidate.below();
-                        if (client.level.getBlockState(candidate).canBeReplaced()
-                                && client.level.getBlockState(below).isSolid()) {
+                        BlockState belowState = client.level.getBlockState(below);
+                        if (!client.level.getBlockState(candidate).canBeReplaced() || !belowState.isSolid()) {
+                            continue;
+                        }
+                        // Never click interactive blocks (crafting_table/furnace/chest) without sneaking
+                        if (belowState.is(Blocks.CRAFTING_TABLE) || belowState.is(Blocks.FURNACE)
+                                || belowState.is(Blocks.CHEST) || belowState.getMenuProvider(client.level, below) != null) {
+                            continue;
+                        }
+                        Vec3 hitVec = new Vec3(below.getX() + 0.5, below.getY() + 1.0, below.getZ() + 0.5);
+                        if (eyePos.distanceToSqr(hitVec) > 4.5 * 4.5) continue;
+
+                        BlockHitResult clip = client.level.clip(new ClipContext(
+                                eyePos, hitVec, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, client.player));
+                        if (clip.getType() == HitResult.Type.BLOCK
+                                && clip.getBlockPos().equals(below)
+                                && clip.getDirection() == Direction.UP) {
                             supportPos = below;
+                            bestHitVec = hitVec;
                             break;
                         }
                     }
                 }
             }
         }
-        if (supportPos == null) {
-            throw new IllegalStateException("No suitable placement spot found near player.");
+        if (supportPos == null || bestHitVec == null) {
+            throw new IllegalStateException("No unobstructed placement spot found near player.");
         }
 
         client.player.getInventory().setSelectedSlot(hotbarSlot);
-        Vec3 hitVec = new Vec3(supportPos.getX() + 0.5, supportPos.getY() + 1.0, supportPos.getZ() + 0.5);
-        RotationManager.rotateTowards(client, hitVec, 180.0);
-        BlockHitResult hit = new BlockHitResult(hitVec, Direction.UP, supportPos, false);
-        client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, hit);
+        RotationManager.rotateTowards(client, bestHitVec, 180.0);
+        BlockHitResult hit = new BlockHitResult(bestHitVec, Direction.UP, supportPos, false);
+        InteractionResult res = client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, hit);
+        if (!res.consumesAction()) {
+            throw new IllegalStateException("Failed to place " + itemName + " at " + supportPos.above().toShortString());
+        }
         AutoCrafter.swingMainHand(client);
         AutoCrafter.log(client, "§d[AI] §7Placed " + itemName + " at " + supportPos.above().toShortString());
         return "Placed " + itemName + " at " + supportPos.above().toShortString();
@@ -907,6 +962,10 @@ public class AiAgentManager {
         stopBaritoneIfBusy();
 
         int slot = args.get("slot").getAsInt();
+        int totalSlots = client.player.containerMenu.slots.size();
+        if (slot < 0 || slot >= totalSlots) {
+            throw new IllegalArgumentException("Slot " + slot + " out of range 0.." + (totalSlots - 1));
+        }
         int button = args.has("button") ? args.get("button").getAsInt() : 0;
         boolean quickMove = args.has("quick_move") && args.get("quick_move").getAsBoolean();
         ContainerInput action = quickMove ? ContainerInput.QUICK_MOVE : ContainerInput.PICKUP;
