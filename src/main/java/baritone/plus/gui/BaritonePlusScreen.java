@@ -4,6 +4,7 @@ import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.api.utils.SettingsUtil;
 import baritone.plus.BaritonePlusClient;
+import baritone.plus.ai.AiSecrets;
 import baritone.plus.config.BaritonePlusConfig;
 import baritone.plus.task.CraftingTask;
 import baritone.plus.util.AutoCrafter;
@@ -68,6 +69,7 @@ public class BaritonePlusScreen extends Screen {
     private String gotoText = "";
     private String followText = "";
     private String rawCmdText = "";
+    private String aiPromptText = "";
 
     // Persisted Baritone tab state
     private boolean showModifiedBaritoneOnly = false;
@@ -149,26 +151,7 @@ public class BaritonePlusScreen extends Screen {
                         () -> cfg.chat.maxHistorySize, 10, 10, 200,
                         val -> cfg.chat.maxHistorySize = val);
             }
-            case AI_OPTIONAL -> {
-                y = addToggleRow(contentX, y, FULL_WIDTH, "AI Bridge Enabled (Optional)",
-                        () -> cfg.aiBridge.enabled,
-                        val -> cfg.aiBridge.enabled = val);
-                y = addIntStepperRow(contentX, y, FULL_WIDTH, "Bridge Port (" + cfg.aiBridge.host + ")",
-                        () -> cfg.aiBridge.port, 1, 1024, 65535,
-                        val -> cfg.aiBridge.port = val);
-                y = addIntStepperRow(contentX, y, FULL_WIDTH, "Snapshot Interval (ticks)",
-                        () -> cfg.aiBridge.snapshotIntervalTicks, 5, 5, 200,
-                        val -> cfg.aiBridge.snapshotIntervalTicks = val);
-                y = addToggleRow(contentX, y, FULL_WIDTH, "Allow AI Chat Send",
-                        () -> cfg.aiBridge.allowChatSend,
-                        val -> cfg.aiBridge.allowChatSend = val);
-                y = addToggleRow(contentX, y, FULL_WIDTH, "Allow AI GUI Interaction",
-                        () -> cfg.aiBridge.allowGuiInteraction,
-                        val -> cfg.aiBridge.allowGuiInteraction = val);
-                addToggleRow(contentX, y, FULL_WIDTH, "Allow AI Combat Override",
-                        () -> cfg.aiBridge.allowCombatOverride,
-                        val -> cfg.aiBridge.allowCombatOverride = val);
-            }
+            case AI_OPTIONAL -> buildAiTab(centerX, y, cfg);
         }
 
         int footerY = this.height - 28;
@@ -261,10 +244,11 @@ public class BaritonePlusScreen extends Screen {
         }).bounds(x + (btnW + gap) * 3, y, btnW, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal("§cStop All"), btn -> {
+            BaritonePlusClient.AI_AGENT.stop();
             BaritonePlusClient.TASK_MANAGER.cancelTask();
             BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute("stop");
             if (this.minecraft != null) {
-                AutoCrafter.log(this.minecraft, "Stopped all tasks and Baritone.");
+                AutoCrafter.log(this.minecraft, "Stopped all tasks, AI, and Baritone.");
             }
             onClose();
         }).bounds(x + (btnW + gap) * 4, y, btnW, 20).build());
@@ -453,6 +437,72 @@ public class BaritonePlusScreen extends Screen {
             AutoCrafter.log(this.minecraft, "Executing Baritone: §f#" + cmd);
         }
         BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(cmd);
+    }
+
+    private void buildAiTab(int centerX, int y, BaritonePlusConfig cfg) {
+        int x = centerX - CONTROL_WIDTH / 2;
+        int halfWidth = (CONTROL_WIDTH - 8) / 2;
+
+        // Row 1: AI Enabled | Model Cycle
+        addToggleRow(x, y, halfWidth, "AI Enabled",
+                () -> cfg.aiBridge.enabled,
+                val -> {
+                    cfg.aiBridge.enabled = val;
+                    if (!val) BaritonePlusClient.AI_AGENT.stop();
+                });
+
+        String[] models = {"gemini-4-hydrogen", "gemini-3.5-flash-lite", "gemini-4-argon", "gemini-4-neon"};
+        addActionRow(x + halfWidth + 8, y, halfWidth, "Model: " + cfg.aiBridge.model, () -> {
+            int idx = 0;
+            for (int i = 0; i < models.length; i++) {
+                if (models[i].equals(cfg.aiBridge.model)) {
+                    idx = i;
+                    break;
+                }
+            }
+            cfg.aiBridge.model = models[(idx + 1) % models.length];
+            BaritonePlusConfig.save();
+            this.rebuildWidgets();
+        });
+        y += ROW_HEIGHT;
+
+        // Row 2: Ask Gemini prompt + button
+        y = addCommandInputRow(x, y, "Ask Gemini", "Ask Gemini (e.g. craft an iron pickaxe)",
+                aiPromptText, s -> aiPromptText = s, "Ask AI",
+                val -> BaritonePlusClient.AI_AGENT.ask(this.minecraft, val));
+
+        // Row 3: Allow Chat Send | Allow GUI Interaction
+        addToggleRow(x, y, halfWidth, "Allow AI Chat Send",
+                () -> cfg.aiBridge.allowChatSend,
+                val -> cfg.aiBridge.allowChatSend = val);
+        addToggleRow(x + halfWidth + 8, y, halfWidth, "Allow AI GUI Clicks",
+                () -> cfg.aiBridge.allowGuiInteraction,
+                val -> cfg.aiBridge.allowGuiInteraction = val);
+        y += ROW_HEIGHT;
+
+        // Row 4: Allow Combat Override | Max Steps
+        addToggleRow(x, y, halfWidth, "Allow Combat Override",
+                () -> cfg.aiBridge.allowCombatOverride,
+                val -> cfg.aiBridge.allowCombatOverride = val);
+        addIntStepperRow(x + halfWidth + 8, y, halfWidth, "Max Steps",
+                () -> cfg.aiBridge.maxStepsPerRequest, 1, 1, 20,
+                val -> cfg.aiBridge.maxStepsPerRequest = val);
+        y += ROW_HEIGHT;
+
+        // Row 5: API Key status | Reset Memory
+        String keyStatus = AiSecrets.hasApiKey() ? "API Key: §aConfigured" : "API Key: §cMissing (/bp ai key)";
+        Button keyBtn = Button.builder(Component.literal(keyStatus), btn -> {})
+                .bounds(x, y, halfWidth, 20).build();
+        keyBtn.active = false;
+        this.addRenderableWidget(keyBtn);
+
+        this.addRenderableWidget(Button.builder(Component.literal("Reset Memory"), btn -> {
+            BaritonePlusClient.AI_AGENT.resetMemory();
+            if (this.minecraft != null) {
+                AutoCrafter.log(this.minecraft, "Reset Gemini conversation memory.");
+            }
+            this.rebuildWidgets();
+        }).bounds(x + halfWidth + 8, y, halfWidth, 20).build());
     }
 
     private void buildCombatTab(int centerX, int y, BaritonePlusConfig cfg) {

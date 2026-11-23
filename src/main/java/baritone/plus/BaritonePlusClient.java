@@ -1,5 +1,6 @@
 package baritone.plus;
 
+import baritone.plus.ai.AiAgentManager;
 import baritone.plus.command.BpCommand;
 import baritone.plus.config.BaritonePlusConfig;
 import baritone.plus.gui.BaritonePlusScreen;
@@ -18,6 +19,7 @@ public class BaritonePlusClient implements ClientModInitializer {
 
     public static final Logger LOGGER = LoggerFactory.getLogger("baritone-plus");
     public static final TaskManager TASK_MANAGER = new TaskManager();
+    public static final AiAgentManager AI_AGENT = new AiAgentManager();
 
     private static final KeyMapping.Category KEY_CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath("baritone_plus", "main"));

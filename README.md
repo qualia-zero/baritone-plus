@@ -11,7 +11,7 @@ An advanced addon for [Baritone](https://github.com/cabaletta/baritone) adding a
 - **Task Scheduling & Management:** Tick-based action queues with graceful error recovery.
 - **Typed JSON Configuration & Presets:** Central `config/baritone-plus.json` with `VANILLA` and `STRICT` anti-cheat profiles and automatic migration from legacy beta config.
 - **Native Config & Control GUI + Unified `/bp` Commands:** Built-in client-side `/bp` commands with auto-completion and a lightweight native Vanilla screen (`Right Shift` or `/bp gui`) featuring a `Control` tab and a `Baritone` tab (common settings + live modified settings viewer/reset).
-- **Optional AI Bridge Settings:** Configurable (disabled by default) settings for connecting an external AI orchestrator without adding runtime overhead when unused.
+- **Optional Embedded Gemini AI Agent:** Disabled by default (`aiBridge.enabled = false`). When enabled with a `GEMINI_API_KEY` (or `/bp ai key <key>`), uses the Gemini `v1/interactions` REST API directly inside the mod JAR with function calling (`get_game_state`, `craft_item`, `baritone_command`, `click_gui_slot`, `send_chat`, `stop_all`) and stateful `previous_interaction_id` memory.
 
 ---
 
@@ -34,7 +34,11 @@ Baritone+ registers all client-side commands under the unified `/bp` namespace w
 | `/bp config <key> [value]` | Reads or updates any setting in `config/baritone-plus.json` live (e.g., `general.betaFeatures`). |
 | `/bp profile <vanilla\|strict>` | Applies a preset anti-cheat profile (`VANILLA` or `STRICT`). |
 | `/bp combat <on\|off>` | Toggles the combat controller configuration flag. |
-| `/bp ai <on\|off\|status>` | Toggles or inspects the optional AI bridge configuration (disabled by default). |
+| `/bp ai <on\|off\|status>` | Toggles or inspects the optional embedded Gemini AI agent (disabled by default). |
+| `/bp ai ask <prompt>` | Sends a task/prompt to the Gemini agent with live game state and function calling. |
+| `/bp ai key <apiKey>` | Saves your Gemini API key locally to `config/baritone-plus-secrets.txt` (or use `GEMINI_API_KEY` env var). |
+| `/bp ai model <model>` | Sets the Gemini model (e.g., `gemini-4-hydrogen`, `gemini-3.5-flash-lite`, `gemini-4-argon`). |
+| `/bp ai reset` | Clears the current Gemini conversation memory (`previous_interaction_id`). |
 
 ---
 

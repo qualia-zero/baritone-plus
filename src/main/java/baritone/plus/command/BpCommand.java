@@ -2,6 +2,7 @@ package baritone.plus.command;
 
 import baritone.api.BaritoneAPI;
 import baritone.plus.BaritonePlusClient;
+import baritone.plus.ai.AiSecrets;
 import baritone.plus.config.BaritonePlusConfig;
 import baritone.plus.task.CraftingTask;
 import com.mojang.brigadier.CommandDispatcher;
@@ -98,6 +99,12 @@ public class BpCommand {
         map.put("ai.enabled", new ConfigEntry(
                 () -> String.valueOf(BaritonePlusConfig.get().aiBridge.enabled),
                 v -> BaritonePlusConfig.get().aiBridge.enabled = parseBool(v)));
+        map.put("ai.model", new ConfigEntry(
+                () -> BaritonePlusConfig.get().aiBridge.model,
+                v -> {
+                    if (v.isBlank()) throw new IllegalArgumentException("Model cannot be blank");
+                    BaritonePlusConfig.get().aiBridge.model = v.trim();
+                }));
         map.put("ai.host", new ConfigEntry(
                 () -> BaritonePlusConfig.get().aiBridge.host,
                 v -> {
@@ -187,9 +194,10 @@ public class BpCommand {
                                 .executes(ctx -> executeBaritone(ctx.getSource(), StringArgumentType.getString(ctx, "command")))))
                 .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("stop")
                         .executes(ctx -> {
+                            BaritonePlusClient.AI_AGENT.stop();
                             BaritonePlusClient.TASK_MANAGER.cancelTask();
                             BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute("stop");
-                            send(ctx.getSource(), "§7Stopped all Baritone+ tasks and Baritone.");
+                            send(ctx.getSource(), "§7Stopped all Baritone+ tasks, AI, and Baritone.");
                             return 1;
                         }))
                 .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("profile")
@@ -225,23 +233,62 @@ public class BpCommand {
                                 .executes(ctx -> {
                                     BaritonePlusConfig.get().aiBridge.enabled = true;
                                     BaritonePlusConfig.save();
-                                    send(ctx.getSource(), "§aOptional AI bridge enabled ("
-                                            + BaritonePlusConfig.get().aiBridge.host + ":"
-                                            + BaritonePlusConfig.get().aiBridge.port + ").");
+                                    send(ctx.getSource(), "§aOptional Gemini AI enabled (model: "
+                                            + BaritonePlusConfig.get().aiBridge.model + ").");
                                     return 1;
                                 }))
                         .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("off")
                                 .executes(ctx -> {
                                     BaritonePlusConfig.get().aiBridge.enabled = false;
+                                    BaritonePlusClient.AI_AGENT.stop();
                                     BaritonePlusConfig.save();
-                                    send(ctx.getSource(), "§cOptional AI bridge disabled.");
+                                    send(ctx.getSource(), "§cOptional Gemini AI disabled.");
+                                    return 1;
+                                }))
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("ask")
+                                .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("prompt", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            String prompt = StringArgumentType.getString(ctx, "prompt");
+                                            BaritonePlusClient.AI_AGENT.ask(Minecraft.getInstance(), prompt);
+                                            return 1;
+                                        })))
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("key")
+                                .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("apiKey", StringArgumentType.word())
+                                        .executes(ctx -> {
+                                            String key = StringArgumentType.getString(ctx, "apiKey");
+                                            AiSecrets.saveApiKey(key);
+                                            send(ctx.getSource(), "§aSaved Gemini API key to config/baritone-plus-secrets.txt.");
+                                            return 1;
+                                        })))
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("model")
+                                .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("model", StringArgumentType.word())
+                                        .suggests((context, builder) -> {
+                                            String[] models = {"gemini-4-hydrogen", "gemini-3.5-flash-lite", "gemini-4-argon", "gemini-4-neon"};
+                                            String rem = builder.getRemaining().toLowerCase();
+                                            for (String m : models) {
+                                                if (m.startsWith(rem)) builder.suggest(m);
+                                            }
+                                            return builder.buildFuture();
+                                        })
+                                        .executes(ctx -> {
+                                            String model = StringArgumentType.getString(ctx, "model");
+                                            BaritonePlusConfig.get().aiBridge.model = model;
+                                            BaritonePlusConfig.save();
+                                            send(ctx.getSource(), "§aSet Gemini model to §f" + model);
+                                            return 1;
+                                        })))
+                        .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("reset")
+                                .executes(ctx -> {
+                                    BaritonePlusClient.AI_AGENT.resetMemory();
+                                    send(ctx.getSource(), "§7Reset Gemini conversation memory.");
                                     return 1;
                                 }))
                         .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("status")
                                 .executes(ctx -> {
                                     var ai = BaritonePlusConfig.get().aiBridge;
-                                    send(ctx.getSource(), "§7AI Bridge: " + (ai.enabled ? "§aON" : "§cOFF")
-                                            + " §7(" + ai.host + ":" + ai.port + ")");
+                                    send(ctx.getSource(), "§7AI: " + (ai.enabled ? "§aON" : "§cOFF")
+                                            + " §7| Model: §f" + ai.model
+                                            + " §7| Key: " + (AiSecrets.hasApiKey() ? "§aConfigured" : "§cMissing"));
                                     return 1;
                                 })))
                 .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("config")
