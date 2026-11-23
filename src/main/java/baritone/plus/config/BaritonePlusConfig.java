@@ -1,7 +1,5 @@
 package baritone.plus.config;
 
-import baritone.api.BaritoneAPI;
-import baritone.api.utils.SettingsUtil;
 import baritone.plus.BaritonePlusClient;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -113,7 +111,6 @@ public class BaritonePlusConfig {
         public boolean enabled = false;
         public String model = "gemini-4-hydrogen";
         public ThinkingLevel thinkingLevel = ThinkingLevel.LOW;
-        public int maxStepsPerRequest = 20;
         public String host = "127.0.0.1";
         public int port = 8765;
         public int snapshotIntervalTicks = 20;
@@ -180,13 +177,6 @@ public class BaritonePlusConfig {
                 container.clickDelayTicks = 3;
             }
         }
-        try {
-            var settings = BaritoneAPI.getSettings();
-            settings.antiCheatCompatibility.value = (profile == AntiCheatProfile.STRICT);
-            SettingsUtil.save(settings);
-        } catch (Exception ignored) {
-            // Baritone may not be initialized in unit/early contexts
-        }
         save();
     }
 
@@ -221,7 +211,6 @@ public class BaritonePlusConfig {
             aiBridge.model = "gemini-4-hydrogen";
         }
         if (aiBridge.thinkingLevel == null) aiBridge.thinkingLevel = ThinkingLevel.LOW;
-        if (aiBridge.maxStepsPerRequest < 1) aiBridge.maxStepsPerRequest = 20;
         if (aiBridge.host == null || aiBridge.host.isBlank()) aiBridge.host = "127.0.0.1";
     }
 

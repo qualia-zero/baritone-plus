@@ -473,16 +473,24 @@ public class BaritonePlusScreen extends Screen {
                 aiPromptText, s -> aiPromptText = s, "Ask AI",
                 val -> BaritonePlusClient.AI_AGENT.ask(this.minecraft, val));
 
-        // Row 3: Thinking Level | Max Steps
-        addActionRow(x + 0, y, halfWidth, "Thinking: " + cfg.aiBridge.thinkingLevel.name(), () -> {
+        // Row 3: Thinking Level | Live AI Status / Stop
+        addActionRow(x, y, halfWidth, "Thinking: " + cfg.aiBridge.thinkingLevel.name(), () -> {
             var levels = BaritonePlusConfig.ThinkingLevel.values();
             cfg.aiBridge.thinkingLevel = levels[(cfg.aiBridge.thinkingLevel.ordinal() + 1) % levels.length];
             BaritonePlusConfig.save();
             this.rebuildWidgets();
         });
-        addIntStepperRow(x + halfWidth + 8, y, halfWidth, "Max Steps",
-                () -> cfg.aiBridge.maxStepsPerRequest, 1, 1, 50,
-                val -> cfg.aiBridge.maxStepsPerRequest = val);
+        if (BaritonePlusClient.AI_AGENT.isRunning()) {
+            addActionRow(x + halfWidth + 8, y, halfWidth, "§cStop AI (Running)", () -> {
+                BaritonePlusClient.AI_AGENT.stop();
+                this.rebuildWidgets();
+            });
+        } else {
+            Button idleBtn = Button.builder(Component.literal("AI Status: §7Idle"), btn -> {})
+                    .bounds(x + halfWidth + 8, y, halfWidth, 20).build();
+            idleBtn.active = false;
+            this.addRenderableWidget(idleBtn);
+        }
         y += ROW_HEIGHT;
 
         // Row 4: Allow Chat Send | Allow GUI Interaction

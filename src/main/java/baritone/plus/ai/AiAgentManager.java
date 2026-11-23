@@ -27,6 +27,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Optional Gemini-powered atomic orchestrator embedded directly in Baritone+.
@@ -84,13 +85,16 @@ public class AiAgentManager {
     private static final JsonArray TOOLS = buildTools();
     private static final int ACTION_TIMEOUT_TICKS = 2400; // 2 minutes at 20 TPS
     private static final int IDLE_DEBOUNCE_TICKS = 20;    // 1 second of continuous idle
+    private static final int MAX_CONSECUTIVE_ERROR_TURNS = 4;
 
     private final GeminiClient geminiClient = new GeminiClient();
     private volatile String lastInteractionId = null;
     private volatile State state = State.IDLE;
+    private volatile long runGeneration = 0L;
+    private volatile CompletableFuture<?> activeRequest = null;
 
     private String activeApiKey = null;
-    private int stepsInCurrentRun = 0;
+    private int consecutiveErrorTurns = 0;
     private long lastChatSentMs = 0L;
 
     // Pending long-running Baritone action state
@@ -128,8 +132,15 @@ public class AiAgentManager {
     }
 
     private void clearRunState() {
+        runGeneration++;
+        CompletableFuture<?> req = activeRequest;
+        activeRequest = null;
+        if (req != null) {
+            req.cancel(true);
+        }
         state = State.IDLE;
         activeApiKey = null;
+        consecutiveErrorTurns = 0;
         pendingActionCall = null;
         pendingActionSummary = null;
         pendingResults = null;
@@ -161,9 +172,10 @@ public class AiAgentManager {
             return;
         }
 
+        runGeneration++;
         state = State.WAITING_API;
         activeApiKey = apiKey;
-        stepsInCurrentRun = 0;
+        consecutiveErrorTurns = 0;
         JsonObject gameState = GameStateCollector.collect(client);
         AutoCrafter.log(client, "§d[AI] §7Thinking (" + cfg.aiBridge.model + ")...");
 
@@ -172,7 +184,22 @@ public class AiAgentManager {
     }
 
     public void tick(Minecraft client) {
-        if (client == null) return;
+        if (state == State.IDLE) {
+            return;
+        }
+        if (client == null || client.player == null || client.level == null) {
+            stop();
+            return;
+        }
+        if (client.player.isDeadOrDying()) {
+            AutoCrafter.log(client, "§e[AI] Stopped (player died).");
+            stopBaritoneIfBusy();
+            stop();
+            return;
+        }
+        if (client.isPaused()) {
+            return;
+        }
         if (state == State.WAITING_ACTION) {
             tickWaitingAction(client);
         } else if (state == State.WAITING_CRAFT) {
@@ -348,7 +375,8 @@ public class AiAgentManager {
 
     private void sendTurn(Minecraft client, String apiKey, JsonElement input) {
         BaritonePlusConfig cfg = BaritonePlusConfig.get();
-        geminiClient.createInteraction(
+        final long gen = runGeneration;
+        activeRequest = geminiClient.createInteraction(
                 apiKey,
                 cfg.aiBridge.model,
                 cfg.aiBridge.thinkingLevel,
@@ -356,11 +384,15 @@ public class AiAgentManager {
                 input,
                 lastInteractionId,
                 TOOLS
-        ).thenAccept(resp -> client.execute(() -> handleResponse(client, apiKey, resp)));
+        ).thenAccept(resp -> client.execute(() -> handleResponse(client, apiKey, gen, resp)));
     }
 
-    private void handleResponse(Minecraft client, String apiKey, GeminiClient.InteractionResponse resp) {
-        if (state != State.WAITING_API) {
+    private void handleResponse(Minecraft client, String apiKey, long gen, GeminiClient.InteractionResponse resp) {
+        if (gen != runGeneration || state != State.WAITING_API) {
+            return;
+        }
+        if (client == null || client.player == null || client.level == null || client.player.isDeadOrDying()) {
+            clearRunState();
             return;
         }
 
@@ -380,31 +412,24 @@ public class AiAgentManager {
         }
 
         List<GeminiClient.FunctionCall> calls = resp.functionCalls();
-        int maxSteps = BaritonePlusConfig.get().aiBridge.maxStepsPerRequest;
         if (calls.isEmpty()) {
             stopBaritoneIfBusy();
             clearRunState();
             return;
         }
 
-        if (stepsInCurrentRun >= maxSteps) {
-            AutoCrafter.log(client, "§e[AI] Reached maxStepsPerRequest (" + maxSteps + ").");
-            stopBaritoneIfBusy();
-            clearRunState();
-            return;
-        }
-
-        stepsInCurrentRun++;
         JsonArray syncResults = new JsonArray();
         GeminiClient.FunctionCall longRunningCall = null;
         String longRunningSummary = null;
         GeminiClient.FunctionCall craftCall = null;
+        boolean hadAnySuccess = false;
 
         for (GeminiClient.FunctionCall fc : calls) {
             if (longRunningCall == null && craftCall == null && isLongRunningCall(fc)) {
                 try {
                     longRunningSummary = startBaritoneCommand(client, fc.arguments());
                     longRunningCall = fc;
+                    hadAnySuccess = true;
                 } catch (Exception e) {
                     syncResults.add(errorResult(fc, "Tool error: " + e.getMessage()));
                 }
@@ -412,12 +437,29 @@ public class AiAgentManager {
                 try {
                     startTickPacedCraft(client, fc);
                     craftCall = fc;
+                    hadAnySuccess = true;
                 } catch (Exception e) {
                     AutoCrafter.log(client, "§c[AI] craft_grid: " + e.getMessage());
                     syncResults.add(errorResult(fc, "Tool error: " + e.getMessage()));
                 }
             } else {
-                syncResults.add(executeSyncTool(client, fc));
+                JsonObject toolRes = executeSyncTool(client, fc);
+                if (!toolRes.has("is_error") || !toolRes.get("is_error").getAsBoolean()) {
+                    hadAnySuccess = true;
+                }
+                syncResults.add(toolRes);
+            }
+        }
+
+        if (hadAnySuccess) {
+            consecutiveErrorTurns = 0;
+        } else {
+            consecutiveErrorTurns++;
+            if (consecutiveErrorTurns >= MAX_CONSECUTIVE_ERROR_TURNS) {
+                AutoCrafter.log(client, "§c[AI] Stopped after repeated errors.");
+                stopBaritoneIfBusy();
+                clearRunState();
+                return;
             }
         }
 

@@ -13,6 +13,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
@@ -52,6 +53,12 @@ public class BaritonePlusClient implements ClientModInitializer {
         // Register Commands
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             BpCommand.register(dispatcher);
+        });
+
+        // Stop AI and pending tasks immediately when leaving any world/server
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            AI_AGENT.stop();
+            TASK_MANAGER.cancelTask();
         });
 
         // Register Tick Event for GUI & TaskManager
