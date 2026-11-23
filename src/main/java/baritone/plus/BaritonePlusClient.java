@@ -1,7 +1,6 @@
 package baritone.plus;
 
 import baritone.plus.command.BpCommand;
-import baritone.plus.command.CraftCommand;
 import baritone.plus.config.BaritonePlusConfig;
 import baritone.plus.gui.BaritonePlusScreen;
 import baritone.plus.task.TaskManager;
@@ -44,7 +43,6 @@ public class BaritonePlusClient implements ClientModInitializer {
 
         // Register Commands
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
-            CraftCommand.register(dispatcher);
             BpCommand.register(dispatcher);
         });
 

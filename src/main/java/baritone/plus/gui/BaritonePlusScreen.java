@@ -1,8 +1,13 @@
 package baritone.plus.gui;
 
+import baritone.api.BaritoneAPI;
+import baritone.plus.BaritonePlusClient;
 import baritone.plus.config.BaritonePlusConfig;
+import baritone.plus.task.CraftingTask;
+import baritone.plus.util.AutoCrafter;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -13,12 +18,13 @@ import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
 
 /**
- * Lightweight native Vanilla Screen for configuring Baritone+.
+ * Lightweight native Vanilla Screen for controlling Baritone/Baritone+ and configuring settings.
  * Uses standard Minecraft widgets with zero external UI dependencies.
  */
 public class BaritonePlusScreen extends Screen {
 
     private enum Tab {
+        CONTROL("Control"),
         GENERAL("General"),
         COMBAT("Combat"),
         CONTAINER_CHAT("Container & Chat"),
@@ -32,14 +38,23 @@ public class BaritonePlusScreen extends Screen {
     }
 
     private final Screen parent;
-    private Tab activeTab = Tab.GENERAL;
+    private Tab activeTab = Tab.CONTROL;
+
+    // Persisted Control tab inputs across rebuilds/tab switches
+    private String craftItemText = "";
+    private int craftAmount = 1;
+    private String mineText = "";
+    private String gotoText = "";
+    private String followText = "";
+    private String rawCmdText = "";
 
     private static final int ROW_HEIGHT = 24;
     private static final int FULL_WIDTH = 260;
+    private static final int CONTROL_WIDTH = 360;
     private static final int STEPPER_BTN_WIDTH = 22;
 
     public BaritonePlusScreen(Screen parent) {
-        super(Component.literal("Baritone+ Settings"));
+        super(Component.literal("Baritone+"));
         this.parent = parent;
     }
 
@@ -53,7 +68,7 @@ public class BaritonePlusScreen extends Screen {
         super.init();
 
         int centerX = this.width / 2;
-        int tabWidth = 94;
+        int tabWidth = 80;
         int tabGap = 4;
         int totalTabsWidth = Tab.values().length * tabWidth + (Tab.values().length - 1) * tabGap;
         int tabStartX = centerX - totalTabsWidth / 2;
@@ -70,13 +85,14 @@ public class BaritonePlusScreen extends Screen {
         }
 
         int contentX = centerX - FULL_WIDTH / 2;
-        int y = 60;
+        int y = 58;
 
         BaritonePlusConfig cfg = BaritonePlusConfig.get();
 
         switch (activeTab) {
+            case CONTROL -> buildControlTab(centerX, y);
             case GENERAL -> {
-                y = addActionRow(contentX, y,
+                y = addActionRow(contentX, y, FULL_WIDTH,
                         "Anti-Cheat Profile: " + cfg.general.antiCheatProfile.name(),
                         () -> {
                             BaritonePlusConfig.AntiCheatProfile next =
@@ -86,80 +102,42 @@ public class BaritonePlusScreen extends Screen {
                             cfg.applyProfile(next);
                             this.rebuildWidgets();
                         });
-                y = addToggleRow(contentX, y, "Beta Features",
+                y = addToggleRow(contentX, y, FULL_WIDTH, "Beta Features",
                         () -> cfg.general.betaFeatures,
                         val -> cfg.general.betaFeatures = val);
-                y = addToggleRow(contentX, y, "Debug Logging",
+                addToggleRow(contentX, y, FULL_WIDTH, "Debug Logging",
                         () -> cfg.general.debugLogging,
                         val -> cfg.general.debugLogging = val);
             }
-            case COMBAT -> {
-                y = addToggleRow(contentX, y, "Combat Controller",
-                        () -> cfg.combat.enabled,
-                        val -> cfg.combat.enabled = val);
-                y = addToggleRow(contentX, y, "Auto Shield",
-                        () -> cfg.combat.autoShield,
-                        val -> cfg.combat.autoShield = val);
-                y = addToggleRow(contentX, y, "Auto Eat",
-                        () -> cfg.combat.autoEat,
-                        val -> cfg.combat.autoEat = val);
-                y = addToggleRow(contentX, y, "Respect Attack Cooldown",
-                        () -> cfg.combat.respectAttackCooldown,
-                        val -> cfg.combat.respectAttackCooldown = val);
-                y = addToggleRow(contentX, y, "Target Hostiles",
-                        () -> cfg.combat.targetHostiles,
-                        val -> cfg.combat.targetHostiles = val);
-                y = addToggleRow(contentX, y, "Target Players",
-                        () -> cfg.combat.targetPlayers,
-                        val -> cfg.combat.targetPlayers = val);
-                y = addActionRow(contentX, y,
-                        "Rotation Mode: " + cfg.combat.rotationMode.name(),
-                        () -> {
-                            cfg.combat.rotationMode =
-                                    cfg.combat.rotationMode == BaritonePlusConfig.RotationMode.SERVER_SILENT
-                                            ? BaritonePlusConfig.RotationMode.CLIENT
-                                            : BaritonePlusConfig.RotationMode.SERVER_SILENT;
-                            BaritonePlusConfig.save();
-                            this.rebuildWidgets();
-                        });
-                y = addDoubleStepperRow(contentX, y, "Attack Range",
-                        () -> cfg.combat.attackRange, 0.1, 2.0, 4.5,
-                        val -> cfg.combat.attackRange = val);
-                y = addDoubleStepperRow(contentX, y, "Max Turn Speed (deg/tick)",
-                        () -> cfg.combat.maxTurnSpeedDegPerTick, 5.0, 10.0, 180.0,
-                        val -> cfg.combat.maxTurnSpeedDegPerTick = val);
-                y = addDoubleStepperRow(contentX, y, "Flee Health Threshold",
-                        () -> cfg.combat.fleeHealthThreshold, 1.0, 0.0, 18.0,
-                        val -> cfg.combat.fleeHealthThreshold = val);
-            }
+            case COMBAT -> buildCombatTab(centerX, y, cfg);
             case CONTAINER_CHAT -> {
-                y = addIntStepperRow(contentX, y, "Container Click Delay (ticks)",
+                y = addIntStepperRow(contentX, y, FULL_WIDTH, "Container Click Delay (ticks)",
                         () -> cfg.container.clickDelayTicks, 1, 0, 20,
                         val -> cfg.container.clickDelayTicks = val);
-                y = addIntStepperRow(contentX, y, "Chat Min Send Interval (ms)",
+                y = addIntStepperRow(contentX, y, FULL_WIDTH, "Chat Min Send Interval (ms)",
                         () -> cfg.chat.minSendIntervalMs, 100, 200, 5000,
                         val -> cfg.chat.minSendIntervalMs = val);
-                y = addIntStepperRow(contentX, y, "Chat History Size",
+                addIntStepperRow(contentX, y, FULL_WIDTH, "Chat History Size",
                         () -> cfg.chat.maxHistorySize, 10, 10, 200,
                         val -> cfg.chat.maxHistorySize = val);
             }
             case AI_OPTIONAL -> {
-                y = addToggleRow(contentX, y, "AI Bridge Enabled (Optional)",
+                y = addToggleRow(contentX, y, FULL_WIDTH, "AI Bridge Enabled (Optional)",
                         () -> cfg.aiBridge.enabled,
                         val -> cfg.aiBridge.enabled = val);
-                y = addIntStepperRow(contentX, y, "Bridge Port (" + cfg.aiBridge.host + ")",
+                y = addIntStepperRow(contentX, y, FULL_WIDTH, "Bridge Port (" + cfg.aiBridge.host + ")",
                         () -> cfg.aiBridge.port, 1, 1024, 65535,
                         val -> cfg.aiBridge.port = val);
-                y = addIntStepperRow(contentX, y, "Snapshot Interval (ticks)",
+                y = addIntStepperRow(contentX, y, FULL_WIDTH, "Snapshot Interval (ticks)",
                         () -> cfg.aiBridge.snapshotIntervalTicks, 5, 5, 200,
                         val -> cfg.aiBridge.snapshotIntervalTicks = val);
-                y = addToggleRow(contentX, y, "Allow AI Chat Send",
+                y = addToggleRow(contentX, y, FULL_WIDTH, "Allow AI Chat Send",
                         () -> cfg.aiBridge.allowChatSend,
                         val -> cfg.aiBridge.allowChatSend = val);
-                y = addToggleRow(contentX, y, "Allow AI GUI Interaction",
+                y = addToggleRow(contentX, y, FULL_WIDTH, "Allow AI GUI Interaction",
                         () -> cfg.aiBridge.allowGuiInteraction,
                         val -> cfg.aiBridge.allowGuiInteraction = val);
-                y = addToggleRow(contentX, y, "Allow AI Combat Override",
+                addToggleRow(contentX, y, FULL_WIDTH, "Allow AI Combat Override",
                         () -> cfg.aiBridge.allowCombatOverride,
                         val -> cfg.aiBridge.allowCombatOverride = val);
             }
@@ -176,26 +154,192 @@ public class BaritonePlusScreen extends Screen {
                 .bounds(centerX + 6, footerY, footerBtnWidth, 20).build());
     }
 
-    private int addToggleRow(int x, int y, String label, BooleanSupplier getter, Consumer<Boolean> setter) {
+    private void buildControlTab(int centerX, int y) {
+        int x = centerX - CONTROL_WIDTH / 2;
+
+        // Row 1: Craft (Baritone+)
+        EditBox craftBox = new EditBox(this.font, x, y, 176, 20, Component.literal("Craft Item"));
+        craftBox.setValue(craftItemText);
+        craftBox.setHint(Component.literal("Item (e.g. iron_pickaxe)"));
+        craftBox.setResponder(s -> craftItemText = s);
+        this.addRenderableWidget(craftBox);
+
+        this.addRenderableWidget(Button.builder(Component.literal("-"), btn -> {
+            craftAmount = Math.max(1, craftAmount - 1);
+            this.rebuildWidgets();
+        }).bounds(x + 180, y, 20, 20).build());
+
+        Button amtDisplay = Button.builder(Component.literal(String.valueOf(craftAmount)), btn -> {})
+                .bounds(x + 202, y, 34, 20).build();
+        amtDisplay.active = false;
+        this.addRenderableWidget(amtDisplay);
+
+        this.addRenderableWidget(Button.builder(Component.literal("+"), btn -> {
+            craftAmount = Math.min(64, craftAmount + 1);
+            this.rebuildWidgets();
+        }).bounds(x + 238, y, 20, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal("Craft"), btn -> {
+            String item = craftItemText.trim();
+            if (!item.isEmpty() && this.minecraft != null) {
+                AutoCrafter.log(this.minecraft, "§b[Baritone+] §7Starting to craft " + craftAmount + "x " + item + "...");
+                BaritonePlusClient.TASK_MANAGER.startTask(new CraftingTask(this.minecraft, item, craftAmount));
+                onClose();
+            }
+        }).bounds(x + 264, y, 96, 20).build());
+        y += ROW_HEIGHT;
+
+        // Row 2: Mine (Baritone)
+        y = addCommandInputRow(x, y, "Mine Block", "Block (e.g. diamond_ore)",
+                mineText, s -> mineText = s, "Mine",
+                val -> executeBaritone("mine " + val));
+
+        // Row 3: Goto (Baritone)
+        y = addCommandInputRow(x, y, "Goto Coords", "Coords (e.g. 100 64 -200)",
+                gotoText, s -> gotoText = s, "Goto",
+                val -> executeBaritone("goto " + val));
+
+        // Row 4: Follow (Baritone)
+        y = addCommandInputRow(x, y, "Follow Target", "Target (e.g. players / Name)",
+                followText, s -> followText = s, "Follow",
+                val -> executeBaritone("follow " + val));
+
+        // Row 5: Raw Baritone Command
+        y = addCommandInputRow(x, y, "Raw Command", "Baritone cmd (e.g. tunnel)",
+                rawCmdText, s -> rawCmdText = s, "Run",
+                this::executeBaritone);
+
+        // Row 6: Quick Actions
+        int btnW = 68;
+        int gap = 5;
+        this.addRenderableWidget(Button.builder(Component.literal("Explore"), btn -> {
+            executeBaritone("explore");
+            onClose();
+        }).bounds(x, y, btnW, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal("Farm"), btn -> {
+            executeBaritone("farm");
+            onClose();
+        }).bounds(x + (btnW + gap), y, btnW, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal("Pause"), btn -> {
+            executeBaritone("pause");
+            onClose();
+        }).bounds(x + (btnW + gap) * 2, y, btnW, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal("Resume"), btn -> {
+            executeBaritone("resume");
+            onClose();
+        }).bounds(x + (btnW + gap) * 3, y, btnW, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal("§cStop All"), btn -> {
+            BaritonePlusClient.TASK_MANAGER.cancelTask();
+            BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute("stop");
+            if (this.minecraft != null) {
+                AutoCrafter.log(this.minecraft, "§b[Baritone+] §7Stopped all tasks and Baritone.");
+            }
+            onClose();
+        }).bounds(x + (btnW + gap) * 4, y, btnW, 20).build());
+    }
+
+    private int addCommandInputRow(int x, int y, String title, String hint, String initialValue,
+                                   Consumer<String> onChange, String buttonLabel, Consumer<String> onRun) {
+        EditBox box = new EditBox(this.font, x, y, 260, 20, Component.literal(title));
+        box.setValue(initialValue);
+        box.setHint(Component.literal(hint));
+        box.setResponder(onChange);
+        this.addRenderableWidget(box);
+
+        this.addRenderableWidget(Button.builder(Component.literal(buttonLabel), btn -> {
+            String val = box.getValue().trim();
+            if (!val.isEmpty()) {
+                onRun.accept(val);
+                onClose();
+            }
+        }).bounds(x + 264, y, 96, 20).build());
+
+        return y + ROW_HEIGHT;
+    }
+
+    private void executeBaritone(String cmd) {
+        if (this.minecraft != null) {
+            AutoCrafter.log(this.minecraft, "§b[Baritone+] §7Executing Baritone: §f#" + cmd);
+        }
+        BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(cmd);
+    }
+
+    private void buildCombatTab(int centerX, int y, BaritonePlusConfig cfg) {
+        int colWidth = 190;
+        int colGap = 8;
+        int leftX = centerX - colWidth - colGap / 2;
+        int rightX = centerX + colGap / 2;
+
+        // Row 1
+        addToggleRow(leftX, y, colWidth, "Combat Controller",
+                () -> cfg.combat.enabled, val -> cfg.combat.enabled = val);
+        addToggleRow(rightX, y, colWidth, "Auto Shield",
+                () -> cfg.combat.autoShield, val -> cfg.combat.autoShield = val);
+        y += ROW_HEIGHT;
+
+        // Row 2
+        addToggleRow(leftX, y, colWidth, "Auto Eat",
+                () -> cfg.combat.autoEat, val -> cfg.combat.autoEat = val);
+        addToggleRow(rightX, y, colWidth, "Attack Cooldown",
+                () -> cfg.combat.respectAttackCooldown, val -> cfg.combat.respectAttackCooldown = val);
+        y += ROW_HEIGHT;
+
+        // Row 3
+        addToggleRow(leftX, y, colWidth, "Target Hostiles",
+                () -> cfg.combat.targetHostiles, val -> cfg.combat.targetHostiles = val);
+        addToggleRow(rightX, y, colWidth, "Target Players",
+                () -> cfg.combat.targetPlayers, val -> cfg.combat.targetPlayers = val);
+        y += ROW_HEIGHT;
+
+        // Row 4
+        addActionRow(leftX, y, colWidth,
+                "Rotation: " + cfg.combat.rotationMode.name(),
+                () -> {
+                    cfg.combat.rotationMode =
+                            cfg.combat.rotationMode == BaritonePlusConfig.RotationMode.SERVER_SILENT
+                                    ? BaritonePlusConfig.RotationMode.CLIENT
+                                    : BaritonePlusConfig.RotationMode.SERVER_SILENT;
+                    BaritonePlusConfig.save();
+                    this.rebuildWidgets();
+                });
+        addDoubleStepperRow(rightX, y, colWidth, "Range",
+                () -> cfg.combat.attackRange, 0.1, 2.0, 4.5,
+                val -> cfg.combat.attackRange = val);
+        y += ROW_HEIGHT;
+
+        // Row 5
+        addDoubleStepperRow(leftX, y, colWidth, "Turn Speed",
+                () -> cfg.combat.maxTurnSpeedDegPerTick, 5.0, 10.0, 180.0,
+                val -> cfg.combat.maxTurnSpeedDegPerTick = val);
+        addDoubleStepperRow(rightX, y, colWidth, "Flee HP",
+                () -> cfg.combat.fleeHealthThreshold, 1.0, 0.0, 18.0,
+                val -> cfg.combat.fleeHealthThreshold = val);
+    }
+
+    private int addToggleRow(int x, int y, int width, String label, BooleanSupplier getter, Consumer<Boolean> setter) {
         boolean current = getter.getAsBoolean();
         String text = label + ": " + (current ? "§aON" : "§cOFF");
         this.addRenderableWidget(Button.builder(Component.literal(text), btn -> {
             setter.accept(!getter.getAsBoolean());
             BaritonePlusConfig.save();
             this.rebuildWidgets();
-        }).bounds(x, y, FULL_WIDTH, 20).build());
+        }).bounds(x, y, width, 20).build());
         return y + ROW_HEIGHT;
     }
 
-    private int addActionRow(int x, int y, String label, Runnable action) {
+    private int addActionRow(int x, int y, int width, String label, Runnable action) {
         this.addRenderableWidget(Button.builder(Component.literal(label), btn -> action.run())
-                .bounds(x, y, FULL_WIDTH, 20).build());
+                .bounds(x, y, width, 20).build());
         return y + ROW_HEIGHT;
     }
 
-    private int addIntStepperRow(int x, int y, String label, IntSupplier getter, int step, int min, int max, Consumer<Integer> setter) {
+    private int addIntStepperRow(int x, int y, int width, String label, IntSupplier getter, int step, int min, int max, Consumer<Integer> setter) {
         int val = getter.getAsInt();
-        int centerWidth = FULL_WIDTH - (STEPPER_BTN_WIDTH * 2) - 8;
+        int centerWidth = width - (STEPPER_BTN_WIDTH * 2) - 8;
 
         this.addRenderableWidget(Button.builder(Component.literal("-"), btn -> {
             int next = Math.max(min, getter.getAsInt() - step);
@@ -214,14 +358,14 @@ public class BaritonePlusScreen extends Screen {
             setter.accept(next);
             BaritonePlusConfig.save();
             this.rebuildWidgets();
-        }).bounds(x + FULL_WIDTH - STEPPER_BTN_WIDTH, y, STEPPER_BTN_WIDTH, 20).build());
+        }).bounds(x + width - STEPPER_BTN_WIDTH, y, STEPPER_BTN_WIDTH, 20).build());
 
         return y + ROW_HEIGHT;
     }
 
-    private int addDoubleStepperRow(int x, int y, String label, DoubleSupplier getter, double step, double min, double max, Consumer<Double> setter) {
+    private int addDoubleStepperRow(int x, int y, int width, String label, DoubleSupplier getter, double step, double min, double max, Consumer<Double> setter) {
         double val = getter.getAsDouble();
-        int centerWidth = FULL_WIDTH - (STEPPER_BTN_WIDTH * 2) - 8;
+        int centerWidth = width - (STEPPER_BTN_WIDTH * 2) - 8;
         String formatted = String.format(Locale.ROOT, "%.2f", val);
 
         this.addRenderableWidget(Button.builder(Component.literal("-"), btn -> {
@@ -241,7 +385,7 @@ public class BaritonePlusScreen extends Screen {
             setter.accept(next);
             BaritonePlusConfig.save();
             this.rebuildWidgets();
-        }).bounds(x + FULL_WIDTH - STEPPER_BTN_WIDTH, y, STEPPER_BTN_WIDTH, 20).build());
+        }).bounds(x + width - STEPPER_BTN_WIDTH, y, STEPPER_BTN_WIDTH, 20).build());
 
         return y + ROW_HEIGHT;
     }

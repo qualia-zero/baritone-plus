@@ -10,27 +10,31 @@ An advanced addon for [Baritone](https://github.com/cabaletta/baritone) adding a
 - **Smelting Support:** Automated furnace interaction and fuel/ingredient management.
 - **Task Scheduling & Management:** Tick-based action queues with graceful error recovery.
 - **Typed JSON Configuration & Presets:** Central `config/baritone-plus.json` with `VANILLA` and `STRICT` anti-cheat profiles and automatic migration from legacy beta config.
-- **Native Config GUI & Client Commands:** Built-in client-side `/bp` and `/craft` commands with auto-completion, plus a lightweight native Vanilla settings screen (`Right Shift` or `/bp gui`).
+- **Native Config & Control GUI + Unified `/bp` Commands:** Built-in client-side `/bp` commands with auto-completion and a lightweight native Vanilla screen (`Right Shift` or `/bp gui`) with a `Control` tab to drive both Baritone+ crafting and Baritone commands (`mine`, `goto`, `follow`, `explore`, `farm`, `pause`, `resume`, `stop`).
 - **Optional AI Bridge Settings:** Configurable (disabled by default) settings for connecting an external AI orchestrator without adding runtime overhead when unused.
 
 ---
 
 ## Commands
 
-Baritone+ registers native Fabric client commands (`/`) with tab auto-completion:
+Baritone+ registers all client-side commands under the unified `/bp` namespace with tab auto-completion:
 
 | Command | Description |
 | :--- | :--- |
-| `/bp gui` | Opens the native Baritone+ settings screen (also bound to `Right Shift`). |
-| `/bp config <key> [value]` | Reads or updates any setting in `config/baritone-plus.json` live. |
+| `/bp gui` | Opens the native Baritone+ Control & Settings screen (also bound to `Right Shift`). |
+| `/bp craft <item>` | Starts autocrafting 1 of the specified item (e.g., `/bp craft iron_pickaxe`). |
+| `/bp craft <amount> <item>` | Starts autocrafting the specified amount (1–64) of an item (e.g., `/bp craft 64 oak_planks`). |
+| `/bp mine <blocks>` | Starts Baritone mining for the given block(s) (e.g., `/bp mine diamond_ore`). |
+| `/bp goto <target>` | Navigates with Baritone to coordinates or a block/goal (e.g., `/bp goto 100 64 -200`). |
+| `/bp follow <target>` | Follows players or a specific entity/player with Baritone. |
+| `/bp explore` / `/bp farm` | Starts Baritone exploration or auto-farming. |
+| `/bp pause` / `/bp resume` | Pauses or resumes active Baritone pathing. |
+| `/bp run <command>` | Executes any raw Baritone command. |
+| `/bp stop` | Cancels the current Baritone+ task queue and stops Baritone. |
+| `/bp config <key> [value]` | Reads or updates any setting in `config/baritone-plus.json` live (e.g., `general.betaFeatures`). |
 | `/bp profile <vanilla\|strict>` | Applies a preset anti-cheat profile (`VANILLA` or `STRICT`). |
 | `/bp combat <on\|off>` | Toggles the combat controller configuration flag. |
 | `/bp ai <on\|off\|status>` | Toggles or inspects the optional AI bridge configuration (disabled by default). |
-| `/bp stop` | Cancels the current Baritone+ task queue and stops Baritone. |
-| `/craft <item>` | Starts autocrafting 1 of the specified item (e.g., `/craft iron_pickaxe`). |
-| `/craft <amount> <item>` | Starts autocrafting the specified amount (1–64) of an item (e.g., `/craft 64 oak_planks`). |
-| `/cancel` *(or `/c`)* | Immediately cancels the current task queue and stops Baritone. |
-| `/allowBaritonePlusBetaFeatures` | Toggles experimental beta features (e.g., automatic Nether portal construction). |
 
 ---
 

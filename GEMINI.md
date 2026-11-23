@@ -4,3 +4,4 @@
 - Setze auf das neue Versionsschema (ab 26.x) und die von Haus aus vollständig deobfuskierten Minecraft-JARs.
 - Halte den Code übersichtlich und die Abhängigkeiten minimal.
 - Lege die fertige neue Mod-Version (`baritone-plus-*.jar` ohne `-dev`/`-sources`) nach jedem Build/Release in den Mods-Ordner der Instanz **Fabric (Latest)** (`/home/mark/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher/instances/Fabric (Latest)/minecraft/mods/`) – inklusive passendem `baritone-api-fabric-*.jar`, falls Baritone dort fehlt (ältere `baritone-plus-*.jar` dabei ersetzen).
+- Am Ende eines Builds/Deployments darf zum schnelleren Testen direkt die PrismLauncher-Instanz **Fabric (Latest)** in die Welt **New World** („Neue Welt“) gestartet werden: `flatpak run org.prismlauncher.PrismLauncher --launch "Fabric (Latest)" --world "New World"`.

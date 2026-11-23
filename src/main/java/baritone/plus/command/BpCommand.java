@@ -3,12 +3,15 @@ package baritone.plus.command;
 import baritone.api.BaritoneAPI;
 import baritone.plus.BaritonePlusClient;
 import baritone.plus.config.BaritonePlusConfig;
+import baritone.plus.task.CraftingTask;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
 import java.util.LinkedHashMap;
@@ -17,13 +20,23 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Unified /bp client command for Baritone+ configuration, profiles, and control.
+ * Unified /bp client command for Baritone+ configuration, profiles, and direct Baritone/Baritone+ control.
  */
 public class BpCommand {
 
     private record ConfigEntry(Supplier<String> getter, Consumer<String> setter) {}
 
     private static final Map<String, ConfigEntry> CONFIG_ENTRIES = buildConfigEntries();
+
+    private static final String[] CRAFT_SUGGESTIONS = {
+            "planks", "stick", "crafting_table", "furnace", "iron_ingot", "diamond",
+            "wooden_pickaxe", "wooden_sword", "wooden_shovel", "wooden_axe", "wooden_hoe",
+            "stone_pickaxe", "stone_sword", "stone_shovel", "stone_axe", "stone_hoe",
+            "iron_pickaxe", "iron_sword", "iron_shovel", "iron_axe", "iron_hoe",
+            "diamond_pickaxe", "diamond_sword", "diamond_shovel", "diamond_axe", "diamond_hoe",
+            "oak_planks", "spruce_planks", "birch_planks", "jungle_planks", "acacia_planks",
+            "dark_oak_planks", "mangrove_planks", "cherry_planks", "crimson_planks", "warped_planks"
+    };
 
     private static Map<String, ConfigEntry> buildConfigEntries() {
         Map<String, ConfigEntry> map = new LinkedHashMap<>();
@@ -118,12 +131,60 @@ public class BpCommand {
             return builder.buildFuture();
         };
 
+        SuggestionProvider<FabricClientCommandSource> craftSuggestions = (context, builder) -> {
+            String rem = builder.getRemaining().toLowerCase();
+            for (String s : CRAFT_SUGGESTIONS) {
+                if (s.startsWith(rem)) {
+                    builder.suggest(s);
+                }
+            }
+            if (BaritonePlusConfig.get().general.betaFeatures) {
+                if ("nether_portal".startsWith(rem)) builder.suggest("nether_portal");
+                if ("flint_and_steel".startsWith(rem)) builder.suggest("flint_and_steel");
+            }
+            return builder.buildFuture();
+        };
+
         dispatcher.register(LiteralArgumentBuilder.<FabricClientCommandSource>literal("bp")
                 .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("gui")
                         .executes(ctx -> {
                             BaritonePlusClient.requestOpenGui();
                             return 1;
                         }))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("craft")
+                        .then(RequiredArgumentBuilder.<FabricClientCommandSource, Integer>argument("amount", IntegerArgumentType.integer(1, 64))
+                                .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("item", StringArgumentType.word())
+                                        .suggests(craftSuggestions)
+                                        .executes(ctx -> startCrafting(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "item"),
+                                                IntegerArgumentType.getInteger(ctx, "amount")))))
+                        .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("item", StringArgumentType.word())
+                                .suggests(craftSuggestions)
+                                .executes(ctx -> startCrafting(
+                                        ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "item"),
+                                        1))))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("mine")
+                        .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("blocks", StringArgumentType.greedyString())
+                                .executes(ctx -> executeBaritone(ctx.getSource(), "mine " + StringArgumentType.getString(ctx, "blocks")))))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("goto")
+                        .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("target", StringArgumentType.greedyString())
+                                .executes(ctx -> executeBaritone(ctx.getSource(), "goto " + StringArgumentType.getString(ctx, "target")))))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("follow")
+                        .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("target", StringArgumentType.greedyString())
+                                .executes(ctx -> executeBaritone(ctx.getSource(), "follow " + StringArgumentType.getString(ctx, "target")))))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("explore")
+                        .executes(ctx -> executeBaritone(ctx.getSource(), "explore")))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("farm")
+                        .executes(ctx -> executeBaritone(ctx.getSource(), "farm")))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("pause")
+                        .executes(ctx -> executeBaritone(ctx.getSource(), "pause")))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("resume")
+                        .executes(ctx -> executeBaritone(ctx.getSource(), "resume")))
+                .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("run")
+                        .then(RequiredArgumentBuilder.<FabricClientCommandSource, String>argument("command", StringArgumentType.greedyString())
+                                .executes(ctx -> executeBaritone(ctx.getSource(), StringArgumentType.getString(ctx, "command")))))
                 .then(LiteralArgumentBuilder.<FabricClientCommandSource>literal("stop")
                         .executes(ctx -> {
                             BaritonePlusClient.TASK_MANAGER.cancelTask();
@@ -216,6 +277,18 @@ public class BpCommand {
                                             }
                                         }))))
         );
+    }
+
+    private static int startCrafting(FabricClientCommandSource source, String item, int amount) {
+        send(source, "§7Starting to craft " + amount + "x " + item + "...");
+        BaritonePlusClient.TASK_MANAGER.startTask(new CraftingTask(Minecraft.getInstance(), item, amount));
+        return 1;
+    }
+
+    private static int executeBaritone(FabricClientCommandSource source, String cmd) {
+        send(source, "§7Executing Baritone: §f#" + cmd);
+        BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(cmd);
+        return 1;
     }
 
     private static void send(FabricClientCommandSource source, String message) {
