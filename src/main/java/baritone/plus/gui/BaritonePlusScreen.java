@@ -1,6 +1,8 @@
 package baritone.plus.gui;
 
 import baritone.api.BaritoneAPI;
+import baritone.api.Settings;
+import baritone.api.utils.SettingsUtil;
 import baritone.plus.BaritonePlusClient;
 import baritone.plus.config.BaritonePlusConfig;
 import baritone.plus.task.CraftingTask;
@@ -11,7 +13,10 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
@@ -25,10 +30,11 @@ public class BaritonePlusScreen extends Screen {
 
     private enum Tab {
         CONTROL("Control"),
+        BARITONE("Baritone"),
         GENERAL("General"),
         COMBAT("Combat"),
-        CONTAINER_CHAT("Container & Chat"),
-        AI_OPTIONAL("AI (Optional)");
+        CONTAINER_CHAT("Container"),
+        AI_OPTIONAL("AI (Opt.)");
 
         final String label;
 
@@ -36,6 +42,21 @@ public class BaritonePlusScreen extends Screen {
             this.label = label;
         }
     }
+
+    private static final String[] COMMON_BARITONE_BOOLS = {
+            "allowBreak",
+            "allowPlace",
+            "allowSprint",
+            "allowParkour",
+            "allowParkourPlace",
+            "allowWaterBucketFall",
+            "antiCheatCompatibility",
+            "legitMine",
+            "freeLook",
+            "autoTool",
+            "avoidance",
+            "allowInventory"
+    };
 
     private final Screen parent;
     private Tab activeTab = Tab.CONTROL;
@@ -48,10 +69,16 @@ public class BaritonePlusScreen extends Screen {
     private String followText = "";
     private String rawCmdText = "";
 
+    // Persisted Baritone tab state
+    private boolean showModifiedBaritoneOnly = false;
+    private int modifiedPage = 0;
+
     private static final int ROW_HEIGHT = 24;
     private static final int FULL_WIDTH = 260;
     private static final int CONTROL_WIDTH = 360;
+    private static final int BARITONE_WIDTH = 396;
     private static final int STEPPER_BTN_WIDTH = 22;
+    private static final int MODIFIED_PAGE_SIZE = 5;
 
     public BaritonePlusScreen(Screen parent) {
         super(Component.literal("Baritone+"));
@@ -68,7 +95,7 @@ public class BaritonePlusScreen extends Screen {
         super.init();
 
         int centerX = this.width / 2;
-        int tabWidth = 80;
+        int tabWidth = 68;
         int tabGap = 4;
         int totalTabsWidth = Tab.values().length * tabWidth + (Tab.values().length - 1) * tabGap;
         int tabStartX = centerX - totalTabsWidth / 2;
@@ -91,6 +118,7 @@ public class BaritonePlusScreen extends Screen {
 
         switch (activeTab) {
             case CONTROL -> buildControlTab(centerX, y);
+            case BARITONE -> buildBaritoneTab(centerX, y);
             case GENERAL -> {
                 y = addActionRow(contentX, y, FULL_WIDTH,
                         "Anti-Cheat Profile: " + cfg.general.antiCheatProfile.name(),
@@ -182,7 +210,7 @@ public class BaritonePlusScreen extends Screen {
         this.addRenderableWidget(Button.builder(Component.literal("Craft"), btn -> {
             String item = craftItemText.trim();
             if (!item.isEmpty() && this.minecraft != null) {
-                AutoCrafter.log(this.minecraft, "§b[Baritone+] §7Starting to craft " + craftAmount + "x " + item + "...");
+                AutoCrafter.log(this.minecraft, "Starting to craft " + craftAmount + "x " + item + "...");
                 BaritonePlusClient.TASK_MANAGER.startTask(new CraftingTask(this.minecraft, item, craftAmount));
                 onClose();
             }
@@ -236,10 +264,169 @@ public class BaritonePlusScreen extends Screen {
             BaritonePlusClient.TASK_MANAGER.cancelTask();
             BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute("stop");
             if (this.minecraft != null) {
-                AutoCrafter.log(this.minecraft, "§b[Baritone+] §7Stopped all tasks and Baritone.");
+                AutoCrafter.log(this.minecraft, "Stopped all tasks and Baritone.");
             }
             onClose();
         }).bounds(x + (btnW + gap) * 4, y, btnW, 20).build());
+    }
+
+    @SuppressWarnings("unchecked")
+    private void buildBaritoneTab(int centerX, int y) {
+        Settings settings = BaritoneAPI.getSettings();
+        List<Settings.Setting<?>> modified = getModifiedBaritoneSettings(settings);
+        int x = centerX - BARITONE_WIDTH / 2;
+
+        // Top sub-bar: Common Settings | Modified (N) | Reset All Modified
+        String commonLabel = !showModifiedBaritoneOnly ? "§b[Common Settings]" : "Common Settings";
+        String modLabel = showModifiedBaritoneOnly
+                ? "§e[Modified (" + modified.size() + ")]"
+                : "Modified (" + modified.size() + ")";
+
+        this.addRenderableWidget(Button.builder(Component.literal(commonLabel), btn -> {
+            showModifiedBaritoneOnly = false;
+            this.rebuildWidgets();
+        }).bounds(x, y, 130, 20).build());
+
+        this.addRenderableWidget(Button.builder(Component.literal(modLabel), btn -> {
+            showModifiedBaritoneOnly = true;
+            modifiedPage = 0;
+            this.rebuildWidgets();
+        }).bounds(x + 134, y, 130, 20).build());
+
+        Button resetAllBtn = Button.builder(Component.literal("Reset All Modified"), btn -> {
+            for (Settings.Setting<?> s : modified) {
+                s.reset();
+            }
+            SettingsUtil.save(settings);
+            modifiedPage = 0;
+            this.rebuildWidgets();
+        }).bounds(x + 268, y, 128, 20).build();
+        resetAllBtn.active = !modified.isEmpty();
+        this.addRenderableWidget(resetAllBtn);
+        y += ROW_HEIGHT + 2;
+
+        if (!showModifiedBaritoneOnly) {
+            int colWidth = 194;
+            int colGap = 8;
+            int leftX = centerX - colWidth - colGap / 2;
+            int rightX = centerX + colGap / 2;
+
+            for (int i = 0; i < COMMON_BARITONE_BOOLS.length; i++) {
+                String name = COMMON_BARITONE_BOOLS[i];
+                Settings.Setting<?> setting = findSettingByName(settings, name);
+                int colX = (i % 2 == 0) ? leftX : rightX;
+                int rowY = y + (i / 2) * ROW_HEIGHT;
+
+                if (setting != null && setting.value instanceof Boolean boolVal) {
+                    Settings.Setting<Boolean> boolSetting = (Settings.Setting<Boolean>) setting;
+                    boolean isMod = !Objects.equals(boolSetting.value, boolSetting.defaultValue);
+                    String prefix = isMod ? "§e* " : "";
+                    String label = prefix + name + ": " + (boolVal ? "§aON" : "§cOFF");
+                    this.addRenderableWidget(Button.builder(Component.literal(label), btn -> {
+                        boolSetting.value = !boolSetting.value;
+                        SettingsUtil.save(settings);
+                        this.rebuildWidgets();
+                    }).bounds(colX, rowY, colWidth, 20).build());
+                } else {
+                    Button missing = Button.builder(Component.literal("§7" + name + " (N/A)"), btn -> {})
+                            .bounds(colX, rowY, colWidth, 20).build();
+                    missing.active = false;
+                    this.addRenderableWidget(missing);
+                }
+            }
+            return;
+        }
+
+        // Modified Settings view
+        if (modified.isEmpty()) {
+            Button emptyBtn = Button.builder(Component.literal("All Baritone settings are at default."), btn -> {})
+                    .bounds(x, y, BARITONE_WIDTH, 20).build();
+            emptyBtn.active = false;
+            this.addRenderableWidget(emptyBtn);
+            return;
+        }
+
+        int totalPages = Math.max(1, (modified.size() + MODIFIED_PAGE_SIZE - 1) / MODIFIED_PAGE_SIZE);
+        if (modifiedPage >= totalPages) {
+            modifiedPage = totalPages - 1;
+        }
+
+        int start = modifiedPage * MODIFIED_PAGE_SIZE;
+        int end = Math.min(modified.size(), start + MODIFIED_PAGE_SIZE);
+
+        for (int i = start; i < end; i++) {
+            Settings.Setting<?> s = modified.get(i);
+            String label = "§e" + s.getName() + ": §f" + formatSettingValue(s.value);
+            if (s.value instanceof Boolean) {
+                Settings.Setting<Boolean> boolSetting = (Settings.Setting<Boolean>) s;
+                this.addRenderableWidget(Button.builder(Component.literal(label), btn -> {
+                    boolSetting.value = !boolSetting.value;
+                    SettingsUtil.save(settings);
+                    this.rebuildWidgets();
+                }).bounds(x, y, 344, 20).build());
+            } else {
+                Button infoBtn = Button.builder(Component.literal(label), btn -> {})
+                        .bounds(x, y, 344, 20).build();
+                infoBtn.active = false;
+                this.addRenderableWidget(infoBtn);
+            }
+
+            this.addRenderableWidget(Button.builder(Component.literal("Reset"), btn -> {
+                s.reset();
+                SettingsUtil.save(settings);
+                this.rebuildWidgets();
+            }).bounds(x + 348, y, 48, 20).build());
+
+            y += ROW_HEIGHT;
+        }
+
+        if (totalPages > 1) {
+            Button prev = Button.builder(Component.literal("< Prev"), btn -> {
+                modifiedPage = Math.max(0, modifiedPage - 1);
+                this.rebuildWidgets();
+            }).bounds(x, y, 90, 20).build();
+            prev.active = modifiedPage > 0;
+            this.addRenderableWidget(prev);
+
+            Button pageLabel = Button.builder(Component.literal("Page " + (modifiedPage + 1) + "/" + totalPages), btn -> {})
+                    .bounds(x + 94, y, 208, 20).build();
+            pageLabel.active = false;
+            this.addRenderableWidget(pageLabel);
+
+            Button next = Button.builder(Component.literal("Next >"), btn -> {
+                modifiedPage = Math.min(totalPages - 1, modifiedPage + 1);
+                this.rebuildWidgets();
+            }).bounds(x + 306, y, 90, 20).build();
+            next.active = modifiedPage < totalPages - 1;
+            this.addRenderableWidget(next);
+        }
+    }
+
+    private List<Settings.Setting<?>> getModifiedBaritoneSettings(Settings settings) {
+        List<Settings.Setting<?>> modified = new ArrayList<>();
+        for (Settings.Setting<?> s : settings.allSettings) {
+            if (s.value == null || s.isJavaOnly()) {
+                continue;
+            }
+            if (!Objects.equals(s.value, s.defaultValue)) {
+                modified.add(s);
+            }
+        }
+        return modified;
+    }
+
+    private Settings.Setting<?> findSettingByName(Settings settings, String name) {
+        for (Settings.Setting<?> s : settings.allSettings) {
+            if (name.equals(s.getName())) {
+                return s;
+            }
+        }
+        return null;
+    }
+
+    private String formatSettingValue(Object value) {
+        String s = String.valueOf(value);
+        return s.length() > 32 ? s.substring(0, 29) + "..." : s;
     }
 
     private int addCommandInputRow(int x, int y, String title, String hint, String initialValue,
@@ -263,7 +450,7 @@ public class BaritonePlusScreen extends Screen {
 
     private void executeBaritone(String cmd) {
         if (this.minecraft != null) {
-            AutoCrafter.log(this.minecraft, "§b[Baritone+] §7Executing Baritone: §f#" + cmd);
+            AutoCrafter.log(this.minecraft, "Executing Baritone: §f#" + cmd);
         }
         BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(cmd);
     }

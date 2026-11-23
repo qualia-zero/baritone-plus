@@ -1,6 +1,7 @@
 package baritone.plus.task;
 
 import baritone.plus.BaritonePlusClient;
+import baritone.plus.config.BaritonePlusConfig;
 import baritone.plus.util.AutoCrafter;
 import baritone.api.IBaritone;
 import net.minecraft.client.Minecraft;
@@ -13,8 +14,13 @@ public class CraftAction implements Action {
     private boolean hasLogged = false;
 
     public CraftAction(String item, int amount) {
+        this(item, amount, false);
+    }
+
+    CraftAction(String item, int amount, boolean silent) {
         this.item = item;
         this.amount = amount;
+        this.hasLogged = silent;
     }
 
     @Override
@@ -95,8 +101,7 @@ public class CraftAction implements Action {
         }
         
         if (!hasMaterials) {
-            AutoCrafter.log(client, "Error: Missing materials to craft " + item + "! Missing: " + missingItem);
-            BaritonePlusClient.TASK_MANAGER.failTask();
+            BaritonePlusClient.TASK_MANAGER.replanCurrentTask(client, "missing " + missingItem);
             return;
         }
 
@@ -189,8 +194,14 @@ public class CraftAction implements Action {
         
         // Quick move the result
         AutoCrafter.takeResult(client, 0);
-        
-        if (isTool || item.equals("flint_and_steel")) {
+
+        int yieldPerCraft = (item.equals("planks") || item.endsWith("_planks") || item.equals("stick")) ? 4 : 1;
+        int remaining = amount - yieldPerCraft;
+
+        if (remaining > 0) {
+            BaritonePlusClient.TASK_MANAGER.prependAction(new CraftAction(item, remaining, true));
+            BaritonePlusClient.TASK_MANAGER.setTickDelay(Math.max(4, BaritonePlusConfig.get().container.clickDelayTicks + 2));
+        } else if (isTool || item.equals("flint_and_steel")) {
             BaritonePlusClient.TASK_MANAGER.prependAction(new EnsureHotbarAction(item, isCraftingScreen));
             BaritonePlusClient.TASK_MANAGER.setTickDelay(5);
         }

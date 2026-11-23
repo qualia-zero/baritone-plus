@@ -4,6 +4,7 @@ import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.plus.util.AutoCrafter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 
 public class TaskManager {
@@ -16,6 +17,8 @@ public class TaskManager {
     private int retryDelay = 0;
     private int retryCount = 0;
     private static final int MAX_RETRIES = 3;
+    private int replanCount = 0;
+    private static final int MAX_REPLANS = 6;
 
     private java.util.List<net.minecraft.world.item.Item> originalThrowawayItems = null;
     private boolean minedStoneDuringTask = false;
@@ -43,8 +46,12 @@ public class TaskManager {
 
     private void stopBaritoneAndReleaseKeys(Minecraft client, IBaritone baritone) {
         if (baritone != null) {
+            baritone.getCommandManager().execute("stop");
             baritone.getPathingBehavior().cancelEverything();
             baritone.getInputOverrideHandler().clearAllKeys();
+        }
+        if (client != null && client.gameMode != null) {
+            client.gameMode.stopDestroyBlock();
         }
         if (client != null && client.options != null) {
             client.options.keyAttack.setDown(false);
@@ -70,6 +77,7 @@ public class TaskManager {
         this.retryDelay = 0;
         if (!isRetry) {
             this.retryCount = 0;
+            this.replanCount = 0;
         }
         this.minedStoneDuringTask = false;
         this.wasBusyLastTick = false;
@@ -84,6 +92,7 @@ public class TaskManager {
         this.lastTargetAmount = 0;
         this.retryDelay = 0;
         this.retryCount = 0;
+        this.replanCount = 0;
         this.minedStoneDuringTask = false;
         this.wasBusyLastTick = false;
         stopBaritoneAndReleaseKeys(Minecraft.getInstance(), BaritoneAPI.getProvider().getPrimaryBaritone());
@@ -98,6 +107,29 @@ public class TaskManager {
 
     public void setTickDelay(int ticks) {
         this.tickDelay = ticks;
+    }
+
+    public void replanCurrentTask(Minecraft client, String reason) {
+        stopBaritoneAndReleaseKeys(client, BaritoneAPI.getProvider().getPrimaryBaritone());
+        if (client != null) {
+            if (client.player != null) {
+                client.player.closeContainer();
+            }
+            client.gui.setScreen(null);
+        }
+        updateThrowawaySettings(client, false);
+        this.minedStoneDuringTask = false;
+        this.wasBusyLastTick = false;
+
+        if (lastTargetItem != null && replanCount < MAX_REPLANS) {
+            replanCount++;
+            AutoCrafter.log(client, "§eReplanning (" + reason + ")... (" + replanCount + "/" + MAX_REPLANS + ")");
+            this.currentTask = new CraftingTask(client, lastTargetItem, lastTargetAmount);
+            this.tickDelay = 12;
+        } else {
+            AutoCrafter.log(client, "§cTask aborted: could not resolve missing requirement (" + reason + ").");
+            cancelTask();
+        }
     }
 
     public void failTask() {
@@ -141,20 +173,33 @@ public class TaskManager {
 
         if (currentTask == null) return;
 
+        IBaritone baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+
+        // Never allow mining/attacking while an inventory/crafting container GUI is open
+        if (client.gui.screen() instanceof AbstractContainerScreen<?>) {
+            if (client.options != null) {
+                client.options.keyAttack.setDown(false);
+            }
+            if (client.gameMode != null) {
+                client.gameMode.stopDestroyBlock();
+            }
+            baritone.getInputOverrideHandler().clearAllKeys();
+        }
+
         if (tickDelay > 0) {
             tickDelay--;
             return;
         }
 
-        IBaritone baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
-
         // Check if Baritone is busy
-        boolean isBusy = baritone.getPathingBehavior().isPathing() 
-                || baritone.getMineProcess().isActive() 
+        boolean isBusy = baritone.getPathingBehavior().isPathing()
+                || baritone.getMineProcess().isActive()
                 || baritone.getGetToBlockProcess().isActive()
                 || baritone.getFollowProcess().isActive()
                 || baritone.getCustomGoalProcess().isActive()
-                || baritone.getBuilderProcess().isActive();
+                || baritone.getBuilderProcess().isActive()
+                || baritone.getExploreProcess().isActive()
+                || baritone.getFarmProcess().isActive();
 
         if (isBusy) {
             if (currentTask != null && currentTask.hasMoreActions()) {

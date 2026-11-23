@@ -6,11 +6,11 @@ An advanced addon for [Baritone](https://github.com/cabaletta/baritone) adding a
 
 ## Features
 
-- **Automated Crafting Pipelines:** Recursive crafting tree resolution (crafting prerequisites, placing crafting tables, gathering ingredients).
+- **Automated Crafting Pipelines:** Recursive crafting tree resolution with live inventory replanning and anti-cheat-safe container/crafting isolation (stops Baritone mining while GUIs are open).
 - **Smelting Support:** Automated furnace interaction and fuel/ingredient management.
 - **Task Scheduling & Management:** Tick-based action queues with graceful error recovery.
 - **Typed JSON Configuration & Presets:** Central `config/baritone-plus.json` with `VANILLA` and `STRICT` anti-cheat profiles and automatic migration from legacy beta config.
-- **Native Config & Control GUI + Unified `/bp` Commands:** Built-in client-side `/bp` commands with auto-completion and a lightweight native Vanilla screen (`Right Shift` or `/bp gui`) with a `Control` tab to drive both Baritone+ crafting and Baritone commands (`mine`, `goto`, `follow`, `explore`, `farm`, `pause`, `resume`, `stop`).
+- **Native Config & Control GUI + Unified `/bp` Commands:** Built-in client-side `/bp` commands with auto-completion and a lightweight native Vanilla screen (`Right Shift` or `/bp gui`) featuring a `Control` tab and a `Baritone` tab (common settings + live modified settings viewer/reset).
 - **Optional AI Bridge Settings:** Configurable (disabled by default) settings for connecting an external AI orchestrator without adding runtime overhead when unused.
 
 ---
